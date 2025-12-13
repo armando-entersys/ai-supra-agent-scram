@@ -38,14 +38,17 @@ class GoogleAdsTool:
                     )
                 else:
                     # Load from environment variables
-                    self._client = GoogleAdsClient.load_from_dict({
+                    config = {
                         "developer_token": settings.google_ads_developer_token,
                         "client_id": settings.google_ads_client_id,
                         "client_secret": settings.google_ads_client_secret,
                         "refresh_token": settings.google_ads_refresh_token,
-                        "login_customer_id": settings.google_ads_login_customer_id,
                         "use_proto_plus": True,
-                    })
+                    }
+                    # Only add login_customer_id if it has a value (for MCC accounts)
+                    if settings.google_ads_login_customer_id:
+                        config["login_customer_id"] = settings.google_ads_login_customer_id
+                    self._client = GoogleAdsClient.load_from_dict(config)
                 logger.info("Google Ads client initialized successfully")
             except Exception as e:
                 logger.error("Failed to initialize Google Ads client", error=str(e))
