@@ -59,8 +59,10 @@ Thumbs.db
 # ═══════════════════════════════════════════════════════════════
 # DOCKER & DEPLOYMENT
 # ═══════════════════════════════════════════════════════════════
-# Database volume (if local)
-database/
+# Database volume (if local) - but keep init scripts
+/database/
+!backend/database/
+!backend/database/init.sql
 
 # ═══════════════════════════════════════════════════════════════
 # LOGS & TEMPORARY
