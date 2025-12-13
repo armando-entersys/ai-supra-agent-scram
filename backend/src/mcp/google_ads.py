@@ -228,7 +228,7 @@ class GoogleAdsTool:
             error_details = []
             for error in ex.failure.errors:
                 error_details.append({
-                    "error_code": error.error_code,
+                    "error_code": str(error.error_code),
                     "message": error.message,
                 })
             logger.error("Google Ads API error", tool=tool_name, errors=error_details)
