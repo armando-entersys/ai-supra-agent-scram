@@ -104,8 +104,8 @@ export function DropZone({
         {...getRootProps()}
         sx={{
           border: `2px dashed ${getBorderColor()}`,
-          borderRadius: 3,
-          p: 4,
+          borderRadius: { xs: 2, sm: 3 },
+          p: { xs: 2, sm: 4 },
           textAlign: 'center',
           bgcolor: getBackgroundColor(),
           cursor: isUploading ? 'not-allowed' : 'pointer',
@@ -122,9 +122,9 @@ export function DropZone({
           <Box>
             <UploadIcon
               sx={{
-                fontSize: 48,
+                fontSize: { xs: 36, sm: 48 },
                 color: colors.primary,
-                mb: 2,
+                mb: { xs: 1, sm: 2 },
                 animation: 'pulse 1.5s infinite',
                 '@keyframes pulse': {
                   '0%, 100%': { opacity: 1 },
@@ -132,24 +132,30 @@ export function DropZone({
                 },
               }}
             />
-            <Typography variant="body1" sx={{ mb: 2, color: colors.dark }}>
+            <Typography variant="body1" sx={{ mb: 2, color: colors.dark, fontSize: { xs: '0.875rem', sm: '1rem' } }}>
               Subiendo documento...
             </Typography>
             <LinearProgress sx={{ maxWidth: 300, mx: 'auto' }} />
           </Box>
         ) : uploadedFile ? (
           <Box>
-            <SuccessIcon sx={{ fontSize: 48, color: colors.success, mb: 2 }} />
-            <Typography variant="body1" sx={{ color: colors.dark, mb: 1 }}>
+            <SuccessIcon sx={{ fontSize: { xs: 36, sm: 48 }, color: colors.success, mb: { xs: 1, sm: 2 } }} />
+            <Typography variant="body1" sx={{ color: colors.dark, mb: 1, fontSize: { xs: '0.875rem', sm: '1rem' } }}>
               Documento subido exitosamente
             </Typography>
             <Chip
               icon={<FileIcon />}
               label={uploadedFile}
+              size="small"
               sx={{
                 bgcolor: `${colors.success}15`,
                 color: colors.greenDark,
                 fontWeight: 500,
+                maxWidth: '100%',
+                '& .MuiChip-label': {
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                },
               }}
             />
           </Box>
@@ -157,9 +163,9 @@ export function DropZone({
           <Box>
             <UploadIcon
               sx={{
-                fontSize: 48,
+                fontSize: { xs: 36, sm: 48 },
                 color: isDragActive ? colors.primary : colors.textNav,
-                mb: 2,
+                mb: { xs: 1, sm: 2 },
                 transition: 'all 0.3s ease',
               }}
             />
@@ -169,13 +175,14 @@ export function DropZone({
                 color: isDragActive ? colors.primary : colors.dark,
                 fontWeight: 500,
                 mb: 1,
+                fontSize: { xs: '0.875rem', sm: '1rem' },
               }}
             >
               {isDragActive
                 ? 'Suelta el archivo aqui'
                 : 'Arrastra un documento o haz clic para seleccionar'}
             </Typography>
-            <Typography variant="body2" sx={{ color: colors.textParagraph }}>
+            <Typography variant="body2" sx={{ color: colors.textParagraph, fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
               PDF, DOCX, TXT, MD (max. {maxSize / (1024 * 1024)}MB)
             </Typography>
           </Box>

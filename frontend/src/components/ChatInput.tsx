@@ -63,8 +63,8 @@ export function ChatInput({
       sx={{
         display: 'flex',
         alignItems: 'flex-end',
-        gap: 1,
-        p: 2,
+        gap: { xs: 0.5, sm: 1 },
+        p: { xs: 1, sm: 2 },
         bgcolor: colors.white,
         borderTop: `1px solid ${colors.border}`,
       }}
@@ -79,9 +79,10 @@ export function ChatInput({
         placeholder={placeholder}
         disabled={isDisabled}
         variant="outlined"
+        size="small"
         sx={{
           '& .MuiOutlinedInput-root': {
-            borderRadius: 3,
+            borderRadius: { xs: 2, sm: 3 },
             bgcolor: colors.bgLight,
             transition: 'all 0.3s ease',
             '& fieldset': {
@@ -96,12 +97,13 @@ export function ChatInput({
             },
           },
           '& .MuiInputBase-input': {
-            py: 1.5,
+            py: { xs: 1, sm: 1.5 },
+            fontSize: { xs: '0.875rem', sm: '1rem' },
           },
         }}
         InputProps={{
           startAdornment: (
-            <InputAdornment position="start">
+            <InputAdornment position="start" sx={{ display: { xs: 'none', sm: 'flex' } }}>
               <Tooltip title="Adjuntar archivo (pronto)">
                 <span>
                   <IconButton
@@ -127,8 +129,9 @@ export function ChatInput({
         onClick={handleSend}
         disabled={!canSend}
         sx={{
-          width: 48,
-          height: 48,
+          width: { xs: 40, sm: 48 },
+          height: { xs: 40, sm: 48 },
+          minWidth: { xs: 40, sm: 48 },
           background: canSend
             ? `linear-gradient(135deg, ${colors.primary} 0%, ${colors.primaryHover} 100%)`
             : colors.border,
@@ -149,9 +152,9 @@ export function ChatInput({
         }}
       >
         {isLoading ? (
-          <CircularProgress size={24} sx={{ color: colors.white }} />
+          <CircularProgress size={20} sx={{ color: colors.white }} />
         ) : (
-          <SendIcon />
+          <SendIcon sx={{ fontSize: { xs: 20, sm: 24 } }} />
         )}
       </IconButton>
     </Box>

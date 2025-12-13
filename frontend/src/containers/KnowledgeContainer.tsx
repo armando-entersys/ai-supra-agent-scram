@@ -88,12 +88,12 @@ export function KnowledgeContainer() {
       sx={{
         height: '100%',
         overflow: 'auto',
-        p: 3,
+        p: { xs: 1.5, sm: 3 },
         bgcolor: colors.white,
       }}
     >
       {/* Header */}
-      <Box sx={{ mb: 4 }}>
+      <Box sx={{ mb: { xs: 2, sm: 4 } }}>
         <Typography
           variant="h4"
           sx={{
@@ -102,17 +102,18 @@ export function KnowledgeContainer() {
             fontStyle: 'italic',
             color: colors.dark,
             mb: 1,
+            fontSize: { xs: '1.5rem', sm: '2.125rem' },
           }}
         >
           Base de Conocimiento
         </Typography>
-        <Typography variant="body1" sx={{ color: colors.textParagraph }}>
+        <Typography variant="body1" sx={{ color: colors.textParagraph, fontSize: { xs: '0.875rem', sm: '1rem' } }}>
           Sube documentos para entrenar al agente con informacion especifica de tu empresa.
         </Typography>
       </Box>
 
       {/* Upload Zone */}
-      <Box sx={{ mb: 4 }}>
+      <Box sx={{ mb: { xs: 2, sm: 4 } }}>
         <DropZone onUpload={handleUpload} isUploading={isUploading} />
       </Box>
 

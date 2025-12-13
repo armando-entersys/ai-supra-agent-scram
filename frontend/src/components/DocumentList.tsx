@@ -18,6 +18,10 @@ import {
   Typography,
   Tooltip,
   Skeleton,
+  Card,
+  CardContent,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material';
 import {
   Delete as DeleteIcon,
@@ -83,7 +87,24 @@ export const DocumentList = memo(function DocumentList({
   onDelete,
   onReindex,
 }: DocumentListProps) {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+
   if (isLoading) {
+    if (isMobile) {
+      return (
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+          {[1, 2, 3].map((i) => (
+            <Card key={i} sx={{ borderRadius: 2 }}>
+              <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+                <Skeleton variant="text" width="70%" />
+                <Skeleton variant="text" width="40%" />
+              </CardContent>
+            </Card>
+          ))}
+        </Box>
+      );
+    }
     return (
       <TableContainer component={Paper} sx={{ borderRadius: 3 }}>
         <Table>
@@ -130,23 +151,97 @@ export const DocumentList = memo(function DocumentList({
     return (
       <Paper
         sx={{
-          p: 6,
+          p: { xs: 4, sm: 6 },
           textAlign: 'center',
-          borderRadius: 3,
+          borderRadius: { xs: 2, sm: 3 },
           bgcolor: colors.bgLight,
         }}
       >
-        <FileIcon sx={{ fontSize: 64, color: colors.border, mb: 2 }} />
-        <Typography variant="h6" sx={{ color: colors.dark, mb: 1 }}>
+        <FileIcon sx={{ fontSize: { xs: 48, sm: 64 }, color: colors.border, mb: 2 }} />
+        <Typography variant="h6" sx={{ color: colors.dark, mb: 1, fontSize: { xs: '1rem', sm: '1.25rem' } }}>
           No hay documentos
         </Typography>
-        <Typography variant="body2" sx={{ color: colors.textParagraph }}>
+        <Typography variant="body2" sx={{ color: colors.textParagraph, fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
           Sube documentos para entrenar la base de conocimiento
         </Typography>
       </Paper>
     );
   }
 
+  // Mobile card view
+  if (isMobile) {
+    return (
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+        {documents.map((doc) => {
+          const statusInfo = getStatusColor(doc.status);
+          return (
+            <Card
+              key={doc.id}
+              sx={{
+                borderRadius: 2,
+                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
+              }}
+            >
+              <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+                <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5 }}>
+                  {getFileIcon(doc.mime_type)}
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        fontWeight: 500,
+                        color: colors.dark,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {doc.original_name}
+                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5, flexWrap: 'wrap' }}>
+                      <Chip
+                        label={statusInfo.label}
+                        size="small"
+                        sx={{
+                          bgcolor: statusInfo.bg,
+                          color: statusInfo.color,
+                          fontWeight: 500,
+                          fontSize: '0.7rem',
+                          height: 22,
+                        }}
+                      />
+                      <Typography variant="caption" sx={{ color: colors.textNav }}>
+                        {formatFileSize(doc.file_size)} • {doc.chunk_count} chunks
+                      </Typography>
+                    </Box>
+                  </Box>
+                  <Box sx={{ display: 'flex', gap: 0.5 }}>
+                    <IconButton
+                      size="small"
+                      onClick={() => onReindex(doc.id)}
+                      disabled={doc.status === 'processing'}
+                      sx={{ color: colors.primary }}
+                    >
+                      <RefreshIcon sx={{ fontSize: 18 }} />
+                    </IconButton>
+                    <IconButton
+                      size="small"
+                      onClick={() => onDelete(doc.id)}
+                      sx={{ color: colors.error }}
+                    >
+                      <DeleteIcon sx={{ fontSize: 18 }} />
+                    </IconButton>
+                  </Box>
+                </Box>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </Box>
+    );
+  }
+
+  // Desktop table view
   return (
     <TableContainer component={Paper} sx={{ borderRadius: 3 }}>
       <Table>

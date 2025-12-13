@@ -46,7 +46,7 @@ export function ChatContainer({ sessionId }: ChatContainerProps) {
         sx={{
           flex: 1,
           overflow: 'auto',
-          p: 3,
+          p: { xs: 1.5, sm: 3 },
           display: 'flex',
           flexDirection: 'column',
         }}
@@ -71,23 +71,23 @@ export function ChatContainer({ sessionId }: ChatContainerProps) {
               alignItems: 'center',
               justifyContent: 'center',
               textAlign: 'center',
-              px: 4,
+              px: { xs: 2, sm: 4 },
             }}
           >
             <Box
               sx={{
-                width: 80,
-                height: 80,
+                width: { xs: 60, sm: 80 },
+                height: { xs: 60, sm: 80 },
                 borderRadius: '50%',
                 background: `linear-gradient(135deg, ${colors.primary} 0%, ${colors.primaryHover} 100%)`,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                mb: 3,
+                mb: { xs: 2, sm: 3 },
                 boxShadow: `0 8px 24px ${colors.primary}40`,
               }}
             >
-              <BotIcon sx={{ fontSize: 40, color: colors.white }} />
+              <BotIcon sx={{ fontSize: { xs: 30, sm: 40 }, color: colors.white }} />
             </Box>
             <Typography
               variant="h4"
@@ -96,7 +96,8 @@ export function ChatContainer({ sessionId }: ChatContainerProps) {
                 fontWeight: 700,
                 fontStyle: 'italic',
                 color: colors.dark,
-                mb: 2,
+                mb: { xs: 1, sm: 2 },
+                fontSize: { xs: '1.5rem', sm: '2.125rem' },
               }}
             >
               Hola, soy AI-SupraAgent
@@ -106,39 +107,47 @@ export function ChatContainer({ sessionId }: ChatContainerProps) {
               sx={{
                 color: colors.textParagraph,
                 maxWidth: 500,
-                mb: 3,
+                mb: { xs: 2, sm: 3 },
                 lineHeight: 1.7,
+                fontSize: { xs: '0.875rem', sm: '1rem' },
+                px: { xs: 1, sm: 0 },
               }}
             >
               Puedo ayudarte a analizar datos de Google Analytics, responder preguntas
               sobre tu base de conocimiento y mucho mas. Escribe tu pregunta para comenzar.
             </Typography>
-            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: 'center' }}>
+            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: 'center', px: { xs: 1, sm: 0 } }}>
               <Chip
                 label="Como van las conversiones hoy?"
                 onClick={() => sendMessage('Como van las conversiones hoy?')}
+                size="small"
                 sx={{
                   bgcolor: colors.bgLight,
                   '&:hover': { bgcolor: `${colors.primary}15` },
                   cursor: 'pointer',
+                  fontSize: { xs: '0.75rem', sm: '0.8125rem' },
                 }}
               />
               <Chip
                 label="Que documentos tengo cargados?"
                 onClick={() => sendMessage('Que documentos tengo cargados?')}
+                size="small"
                 sx={{
                   bgcolor: colors.bgLight,
                   '&:hover': { bgcolor: `${colors.primary}15` },
                   cursor: 'pointer',
+                  fontSize: { xs: '0.75rem', sm: '0.8125rem' },
                 }}
               />
               <Chip
                 label="Usuarios activos ahora"
                 onClick={() => sendMessage('Cuantos usuarios activos hay ahora mismo?')}
+                size="small"
                 sx={{
                   bgcolor: colors.bgLight,
                   '&:hover': { bgcolor: `${colors.primary}15` },
                   cursor: 'pointer',
+                  fontSize: { xs: '0.75rem', sm: '0.8125rem' },
                 }}
               />
             </Box>

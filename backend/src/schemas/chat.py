@@ -79,7 +79,7 @@ class ChatStreamRequest(BaseModel):
         Field(default=True, description="Enable Google Analytics tools"),
     ]
 
-    model_config = {"strict": True}
+    # Note: Not using strict mode to allow string-to-UUID coercion from JSON
 
 
 class ToolCallEvent(BaseModel):

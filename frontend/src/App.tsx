@@ -97,14 +97,16 @@ function App() {
           display: 'flex',
           flexDirection: 'column',
           height: '100vh',
+          width: '100%',
           overflow: 'hidden',
           transition: theme.transitions.create(['margin'], {
             easing: theme.transitions.easing.sharp,
             duration: theme.transitions.duration.leavingScreen,
           }),
-          ml: sidebarOpen && !isMobile ? 0 : `-${DRAWER_WIDTH}px`,
+          // On mobile, always show full width (sidebar is overlay)
+          // On desktop, shift content when sidebar is open
+          ml: isMobile ? 0 : (sidebarOpen ? 0 : `-${DRAWER_WIDTH}px`),
           ...(sidebarOpen && !isMobile && {
-            ml: 0,
             transition: theme.transitions.create(['margin'], {
               easing: theme.transitions.easing.easeOut,
               duration: theme.transitions.duration.enteringScreen,
@@ -121,12 +123,12 @@ function App() {
             borderBottom: `1px solid ${colors.border}`,
           }}
         >
-          <Toolbar>
+          <Toolbar sx={{ minHeight: { xs: 56, sm: 64 }, px: { xs: 1, sm: 2 } }}>
             <IconButton
               edge="start"
               onClick={handleSidebarToggle}
               sx={{
-                mr: 2,
+                mr: { xs: 1, sm: 2 },
                 color: colors.dark,
                 '&:hover': {
                   bgcolor: `${colors.primary}10`,
@@ -137,10 +139,14 @@ function App() {
             </IconButton>
             <Typography
               variant="h6"
+              noWrap
               sx={{
                 fontFamily: '"Asap", sans-serif',
                 fontWeight: 600,
                 color: colors.dark,
+                fontSize: { xs: '1rem', sm: '1.25rem' },
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
               }}
             >
               {currentView === 'chat'

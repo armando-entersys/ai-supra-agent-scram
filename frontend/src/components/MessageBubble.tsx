@@ -68,16 +68,16 @@ export const MessageBubble = memo(function MessageBubble({
       sx={{
         display: 'flex',
         flexDirection: isUser ? 'row-reverse' : 'row',
-        gap: 1.5,
-        mb: 2,
+        gap: { xs: 1, sm: 1.5 },
+        mb: { xs: 1.5, sm: 2 },
         maxWidth: '100%',
       }}
     >
       {/* Avatar */}
       <Box
         sx={{
-          width: 36,
-          height: 36,
+          width: { xs: 28, sm: 36 },
+          height: { xs: 28, sm: 36 },
           borderRadius: '50%',
           display: 'flex',
           alignItems: 'center',
@@ -88,9 +88,9 @@ export const MessageBubble = memo(function MessageBubble({
         }}
       >
         {isUser ? (
-          <UserIcon sx={{ fontSize: 20, color: colors.white }} />
+          <UserIcon sx={{ fontSize: { xs: 16, sm: 20 }, color: colors.white }} />
         ) : (
-          <BotIcon sx={{ fontSize: 20, color: colors.white }} />
+          <BotIcon sx={{ fontSize: { xs: 16, sm: 20 }, color: colors.white }} />
         )}
       </Box>
 
@@ -98,35 +98,38 @@ export const MessageBubble = memo(function MessageBubble({
       <Paper
         elevation={0}
         sx={{
-          maxWidth: '75%',
-          p: 2,
-          borderRadius: 3,
+          maxWidth: { xs: '85%', sm: '75%' },
+          p: { xs: 1.5, sm: 2 },
+          borderRadius: { xs: 2, sm: 3 },
           bgcolor: isUser ? colors.dark : colors.bgLight,
           color: isUser ? colors.white : colors.dark,
           position: 'relative',
-          '&::before': isUser
-            ? {
-                content: '""',
-                position: 'absolute',
-                right: -8,
-                top: 12,
-                width: 0,
-                height: 0,
-                borderTop: '8px solid transparent',
-                borderBottom: '8px solid transparent',
-                borderLeft: `8px solid ${colors.dark}`,
-              }
-            : {
-                content: '""',
-                position: 'absolute',
-                left: -8,
-                top: 12,
-                width: 0,
-                height: 0,
-                borderTop: '8px solid transparent',
-                borderBottom: '8px solid transparent',
-                borderRight: `8px solid ${colors.bgLight}`,
-              },
+          '&::before': {
+            display: { xs: 'none', sm: 'block' },
+            ...(isUser
+              ? {
+                  content: '""',
+                  position: 'absolute',
+                  right: -8,
+                  top: 12,
+                  width: 0,
+                  height: 0,
+                  borderTop: '8px solid transparent',
+                  borderBottom: '8px solid transparent',
+                  borderLeft: `8px solid ${colors.dark}`,
+                }
+              : {
+                  content: '""',
+                  position: 'absolute',
+                  left: -8,
+                  top: 12,
+                  width: 0,
+                  height: 0,
+                  borderTop: '8px solid transparent',
+                  borderBottom: '8px solid transparent',
+                  borderRight: `8px solid ${colors.bgLight}`,
+                }),
+          },
         }}
       >
         <Typography
@@ -136,20 +139,22 @@ export const MessageBubble = memo(function MessageBubble({
             wordBreak: 'break-word',
             color: isUser ? colors.white : colors.textParagraph,
             lineHeight: 1.6,
+            fontSize: { xs: '0.875rem', sm: '1rem' },
             '& code': {
               bgcolor: isUser ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.05)',
               px: 0.5,
               py: 0.25,
               borderRadius: 1,
               fontFamily: 'monospace',
-              fontSize: '0.875em',
+              fontSize: '0.8em',
             },
             '& pre': {
               bgcolor: isUser ? 'rgba(255,255,255,0.1)' : colors.dark,
               color: isUser ? colors.white : colors.bgLight,
-              p: 1.5,
+              p: { xs: 1, sm: 1.5 },
               borderRadius: 2,
               overflow: 'auto',
+              fontSize: { xs: '0.75rem', sm: '0.875rem' },
               '& code': {
                 bgcolor: 'transparent',
               },
