@@ -40,6 +40,7 @@ async def search_similar_chunks(
     embedding_str = "[" + ",".join(map(str, query_embedding)) + "]"
 
     # Execute vector search using pgvector
+    # Note: Using CAST() instead of :: to avoid asyncpg parameter parsing issues
     sql = text("""
         SELECT
             dc.id,
@@ -47,11 +48,11 @@ async def search_similar_chunks(
             dc.chunk_index,
             dc.content,
             dc.token_count,
-            1 - (dc.embedding <=> :embedding::vector) AS similarity
+            1 - (dc.embedding <=> CAST(:embedding AS vector)) AS similarity
         FROM document_chunks dc
         WHERE dc.embedding IS NOT NULL
-          AND 1 - (dc.embedding <=> :embedding::vector) > :threshold
-        ORDER BY dc.embedding <=> :embedding::vector
+          AND 1 - (dc.embedding <=> CAST(:embedding AS vector)) > :threshold
+        ORDER BY dc.embedding <=> CAST(:embedding AS vector)
         LIMIT :top_k
     """)
 
