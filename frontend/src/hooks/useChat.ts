@@ -1,0 +1,218 @@
+/**
+ * Custom hook for chat functionality with streaming
+ */
+
+import { useState, useCallback, useRef } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { chatService } from '@/services/chat';
+import type { ChatMessage, ChatSession, ToolCall, StreamEvent } from '@/types';
+
+interface UseChatOptions {
+  sessionId?: string;
+  useRag?: boolean;
+  useAnalytics?: boolean;
+}
+
+interface UseChatReturn {
+  messages: ChatMessage[];
+  sessions: ChatSession[];
+  currentSession: ChatSession | null;
+  isLoading: boolean;
+  isStreaming: boolean;
+  error: Error | null;
+  activeToolCall: ToolCall | null;
+  sendMessage: (content: string) => Promise<void>;
+  createSession: (title?: string) => Promise<ChatSession>;
+  selectSession: (sessionId: string) => void;
+  deleteSession: (sessionId: string) => Promise<void>;
+  clearMessages: () => void;
+}
+
+export function useChat(options: UseChatOptions = {}): UseChatReturn {
+  const { sessionId: initialSessionId, useRag = true, useAnalytics = true } = options;
+
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(initialSessionId ?? null);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [activeToolCall, setActiveToolCall] = useState<ToolCall | null>(null);
+  const [error, setError] = useState<Error | null>(null);
+
+  const queryClient = useQueryClient();
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  // Fetch sessions
+  const { data: sessions = [], isLoading: sessionsLoading } = useQuery({
+    queryKey: ['chat-sessions'],
+    queryFn: () => chatService.listSessions(),
+  });
+
+  // Fetch current session details
+  const { data: currentSession } = useQuery({
+    queryKey: ['chat-session', currentSessionId],
+    queryFn: () => (currentSessionId ? chatService.getSession(currentSessionId) : null),
+    enabled: !!currentSessionId,
+  });
+
+  // Fetch messages when session changes
+  const { isLoading: messagesLoading } = useQuery({
+    queryKey: ['chat-messages', currentSessionId],
+    queryFn: async () => {
+      if (!currentSessionId) return [];
+      const msgs = await chatService.getMessages(currentSessionId);
+      setMessages(msgs);
+      return msgs;
+    },
+    enabled: !!currentSessionId,
+  });
+
+  // Create session mutation
+  const createSessionMutation = useMutation({
+    mutationFn: (title?: string) => chatService.createSession(title),
+    onSuccess: (session) => {
+      queryClient.invalidateQueries({ queryKey: ['chat-sessions'] });
+      setCurrentSessionId(session.id);
+      setMessages([]);
+    },
+  });
+
+  // Delete session mutation
+  const deleteSessionMutation = useMutation({
+    mutationFn: (sessionId: string) => chatService.deleteSession(sessionId),
+    onSuccess: (_, deletedId) => {
+      queryClient.invalidateQueries({ queryKey: ['chat-sessions'] });
+      if (currentSessionId === deletedId) {
+        setCurrentSessionId(null);
+        setMessages([]);
+      }
+    },
+  });
+
+  // Send message with streaming
+  const sendMessage = useCallback(
+    async (content: string) => {
+      setError(null);
+      setIsStreaming(true);
+
+      // Add optimistic user message
+      const userMessage: ChatMessage = {
+        id: crypto.randomUUID(),
+        session_id: currentSessionId || '',
+        role: 'user',
+        content,
+        tool_calls: null,
+        created_at: new Date().toISOString(),
+      };
+      setMessages((prev) => [...prev, userMessage]);
+
+      // Add placeholder assistant message
+      const assistantMessageId = crypto.randomUUID();
+      const assistantMessage: ChatMessage = {
+        id: assistantMessageId,
+        session_id: currentSessionId || '',
+        role: 'assistant',
+        content: '',
+        tool_calls: null,
+        created_at: new Date().toISOString(),
+      };
+      setMessages((prev) => [...prev, assistantMessage]);
+
+      try {
+        const stream = chatService.streamChat({
+          message: content,
+          session_id: currentSessionId || undefined,
+          use_rag: useRag,
+          use_analytics: useAnalytics,
+        });
+
+        let fullContent = '';
+        const toolCalls: ToolCall[] = [];
+
+        for await (const event of stream) {
+          if (event.event === 'text') {
+            fullContent += event.data as string;
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === assistantMessageId
+                  ? { ...msg, content: fullContent }
+                  : msg
+              )
+            );
+          } else if (event.event === 'tool_call') {
+            const toolCall = event.data as ToolCall;
+            setActiveToolCall(toolCall);
+            if (toolCall.status === 'completed') {
+              toolCalls.push(toolCall);
+              setActiveToolCall(null);
+            }
+          } else if (event.event === 'done') {
+            const doneData = event.data as { session_id: string };
+            if (!currentSessionId && doneData.session_id) {
+              setCurrentSessionId(doneData.session_id);
+              queryClient.invalidateQueries({ queryKey: ['chat-sessions'] });
+            }
+          } else if (event.event === 'error') {
+            throw new Error(event.data as string);
+          }
+        }
+
+        // Update final message with tool calls
+        if (toolCalls.length > 0) {
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === assistantMessageId
+                ? { ...msg, tool_calls: { calls: toolCalls } }
+                : msg
+            )
+          );
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err : new Error('Stream failed'));
+        // Remove failed assistant message
+        setMessages((prev) => prev.filter((msg) => msg.id !== assistantMessageId));
+      } finally {
+        setIsStreaming(false);
+        setActiveToolCall(null);
+      }
+    },
+    [currentSessionId, useRag, useAnalytics, queryClient]
+  );
+
+  const createSession = useCallback(
+    async (title?: string) => {
+      return createSessionMutation.mutateAsync(title);
+    },
+    [createSessionMutation]
+  );
+
+  const selectSession = useCallback((sessionId: string) => {
+    setCurrentSessionId(sessionId);
+    setMessages([]);
+  }, []);
+
+  const deleteSession = useCallback(
+    async (sessionId: string) => {
+      await deleteSessionMutation.mutateAsync(sessionId);
+    },
+    [deleteSessionMutation]
+  );
+
+  const clearMessages = useCallback(() => {
+    setMessages([]);
+    setCurrentSessionId(null);
+  }, []);
+
+  return {
+    messages,
+    sessions,
+    currentSession: currentSession ?? null,
+    isLoading: sessionsLoading || messagesLoading,
+    isStreaming,
+    error,
+    activeToolCall,
+    sendMessage,
+    createSession,
+    selectSession,
+    deleteSession,
+    clearMessages,
+  };
+}
