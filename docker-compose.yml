@@ -1,0 +1,135 @@
+services:
+  # ═══════════════════════════════════════════════════════════════
+  # FRONTEND - React 19 + Nginx
+  # ═══════════════════════════════════════════════════════════════
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: ai-agent-frontend
+    restart: unless-stopped
+    networks:
+      - traefik
+      - ai_internal
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik"
+      - "traefik.http.routers.ai-front.rule=Host(`ai.scram2k.com`)"
+      - "traefik.http.routers.ai-front.entrypoints=websecure"
+      - "traefik.http.routers.ai-front.tls.certresolver=letsencrypt"
+      - "traefik.http.services.ai-front.loadbalancer.server.port=80"
+      # Security headers
+      - "traefik.http.middlewares.ai-front-headers.headers.stsSeconds=31536000"
+      - "traefik.http.middlewares.ai-front-headers.headers.stsIncludeSubdomains=true"
+      - "traefik.http.middlewares.ai-front-headers.headers.contentTypeNosniff=true"
+      - "traefik.http.middlewares.ai-front-headers.headers.frameDeny=true"
+      - "traefik.http.routers.ai-front.middlewares=ai-front-headers"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:80"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # ═══════════════════════════════════════════════════════════════
+  # BACKEND - FastAPI + Uvicorn
+  # ═══════════════════════════════════════════════════════════════
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ai-agent-backend
+    restart: unless-stopped
+    networks:
+      - traefik
+      - ai_internal
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@database:5432/${POSTGRES_DB}
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/secrets/gcp-sa-key.json
+      - GCP_PROJECT_ID=${GCP_PROJECT_ID}
+      - GA4_PROPERTY_ID=${GA4_PROPERTY_ID}
+      - API_SECRET_KEY=${API_SECRET_KEY}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-https://ai.scram2k.com}
+      - ENVIRONMENT=${ENVIRONMENT:-production}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      - ./secrets/gcp-sa-key.json:/app/secrets/gcp-sa-key.json:ro
+      - uploads_data:/app/uploads
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik"
+      - "traefik.http.routers.ai-api.rule=Host(`api.ai.scram2k.com`)"
+      - "traefik.http.routers.ai-api.entrypoints=websecure"
+      - "traefik.http.routers.ai-api.tls.certresolver=letsencrypt"
+      - "traefik.http.services.ai-api.loadbalancer.server.port=8000"
+      # CORS handled by FastAPI, but add security headers
+      - "traefik.http.middlewares.ai-api-headers.headers.stsSeconds=31536000"
+      - "traefik.http.middlewares.ai-api-headers.headers.contentTypeNosniff=true"
+      - "traefik.http.routers.ai-api.middlewares=ai-api-headers"
+    depends_on:
+      database:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ═══════════════════════════════════════════════════════════════
+  # DATABASE - PostgreSQL 16 + pgvector
+  # ═══════════════════════════════════════════════════════════════
+  database:
+    image: pgvector/pgvector:pg16
+    container_name: ai-agent-db
+    restart: unless-stopped
+    networks:
+      - ai_internal
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./backend/database/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    # NO labels de Traefik - Base de datos NO expuesta
+
+# ═══════════════════════════════════════════════════════════════
+# NETWORKS
+# ═══════════════════════════════════════════════════════════════
+networks:
+  traefik:
+    external: true
+  ai_internal:
+    driver: bridge
+    internal: true
+
+# ═══════════════════════════════════════════════════════════════
+# VOLUMES
+# ═══════════════════════════════════════════════════════════════
+volumes:
+  pgdata:
+    driver: local
+  uploads_data:
+    driver: local
