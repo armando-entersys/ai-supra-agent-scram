@@ -68,6 +68,38 @@ class Settings(BaseSettings):
     ]
 
     # ─────────────────────────────────────────────────────────────
+    # Google Ads
+    # ─────────────────────────────────────────────────────────────
+    google_ads_customer_id: Annotated[
+        str | None,
+        Field(default=None, description="Default Google Ads customer ID"),
+    ]
+    google_ads_developer_token: Annotated[
+        str | None,
+        Field(default=None, description="Google Ads API developer token"),
+    ]
+    google_ads_client_id: Annotated[
+        str | None,
+        Field(default=None, description="Google Ads OAuth client ID"),
+    ]
+    google_ads_client_secret: Annotated[
+        str | None,
+        Field(default=None, description="Google Ads OAuth client secret"),
+    ]
+    google_ads_refresh_token: Annotated[
+        str | None,
+        Field(default=None, description="Google Ads OAuth refresh token"),
+    ]
+    google_ads_login_customer_id: Annotated[
+        str | None,
+        Field(default=None, description="Google Ads MCC login customer ID"),
+    ]
+    google_ads_config_path: Annotated[
+        str | None,
+        Field(default=None, description="Path to google-ads.yaml config file"),
+    ]
+
+    # ─────────────────────────────────────────────────────────────
     # API Security
     # ─────────────────────────────────────────────────────────────
     api_secret_key: Annotated[

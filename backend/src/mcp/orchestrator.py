@@ -21,6 +21,7 @@ from vertexai.generative_models import (
 from src.config import get_settings
 from src.database.connection import async_session_maker
 from src.mcp.google_analytics import GoogleAnalyticsTool
+from src.mcp.google_ads import get_google_ads_tool, GoogleAdsTool
 from src.mcp.knowledge_base import KnowledgeBaseTool
 from src.rag.retrieval import get_context_for_query
 
@@ -42,6 +43,7 @@ class AgentOrchestrator:
         # Initialize tools
         self.ga_tool = GoogleAnalyticsTool()
         self.kb_tool = KnowledgeBaseTool()
+        self.ads_tool = get_google_ads_tool()  # May be None if not configured
 
         # Build Gemini tool definitions
         self.tools = self._build_tools()
@@ -58,11 +60,12 @@ class AgentOrchestrator:
         )
 
         # System instruction
-        self.system_instruction = """Eres AI-SupraAgent, un asistente inteligente especializado en análisis de datos de Google Analytics y gestión de conocimiento empresarial.
+        self.system_instruction = """Eres AI-SupraAgent, un asistente inteligente especializado en análisis de datos de marketing digital y gestión de conocimiento empresarial.
 
 Tus capacidades incluyen:
 1. **Análisis de Google Analytics**: Puedes consultar métricas, dimensiones y generar reportes de GA4.
-2. **Base de Conocimiento**: Puedes buscar información en los documentos cargados por el usuario.
+2. **Google Ads**: Puedes analizar campañas, grupos de anuncios, keywords y métricas de rendimiento publicitario.
+3. **Base de Conocimiento**: Puedes buscar información en los documentos cargados por el usuario.
 
 Directrices:
 - Responde siempre en español a menos que el usuario escriba en otro idioma.
@@ -92,6 +95,11 @@ Formato de respuesta:
         kb_functions = self.kb_tool.get_function_declarations()
         function_declarations.extend(kb_functions)
 
+        # Google Ads tools (if configured)
+        if self.ads_tool:
+            ads_functions = self.ads_tool.get_function_declarations()
+            function_declarations.extend(ads_functions)
+
         return [Tool(function_declarations=function_declarations)]
 
     async def _execute_tool(self, tool_name: str, tool_args: dict[str, Any]) -> dict[str, Any]:
@@ -120,6 +128,8 @@ Formato de respuesta:
                 "list_documents",
             ]:
                 result = await self.kb_tool.execute(tool_name, tool_args)
+            elif tool_name.startswith("google_ads_") and self.ads_tool:
+                result = await self.ads_tool.execute(tool_name, tool_args)
             else:
                 result = {"error": f"Unknown tool: {tool_name}"}
 

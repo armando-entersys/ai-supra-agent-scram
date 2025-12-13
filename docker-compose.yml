@@ -60,6 +60,14 @@ services:
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-https://ai.scram2k.com,http://ai.scram2k.com}
       - ENVIRONMENT=${ENVIRONMENT:-production}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      # Google Ads (optional)
+      - GOOGLE_ADS_CUSTOMER_ID=${GOOGLE_ADS_CUSTOMER_ID:-}
+      - GOOGLE_ADS_DEVELOPER_TOKEN=${GOOGLE_ADS_DEVELOPER_TOKEN:-}
+      - GOOGLE_ADS_CLIENT_ID=${GOOGLE_ADS_CLIENT_ID:-}
+      - GOOGLE_ADS_CLIENT_SECRET=${GOOGLE_ADS_CLIENT_SECRET:-}
+      - GOOGLE_ADS_REFRESH_TOKEN=${GOOGLE_ADS_REFRESH_TOKEN:-}
+      - GOOGLE_ADS_LOGIN_CUSTOMER_ID=${GOOGLE_ADS_LOGIN_CUSTOMER_ID:-}
+      - GOOGLE_ADS_CONFIG_PATH=${GOOGLE_ADS_CONFIG_PATH:-}
     volumes:
       - ./secrets/gcp-sa-key.json:/app/secrets/gcp-sa-key.json:ro
       - uploads_data:/app/uploads
