@@ -1,14 +1,16 @@
 /**
  * Chat message bubble component
  * Displays user and assistant messages with SCRAM styling
+ * Fully responsive with optimized mobile layout
  */
 
 import { memo } from 'react';
-import { Box, Typography, Paper, Chip, CircularProgress } from '@mui/material';
+import { Box, Typography, Paper, Chip, CircularProgress, useMediaQuery, useTheme } from '@mui/material';
 import {
   SmartToy as BotIcon,
   Person as UserIcon,
   Build as ToolIcon,
+  Check as CheckIcon,
 } from '@mui/icons-material';
 import { colors } from '@/theme';
 import type { ChatMessage, ToolCall } from '@/types';
@@ -18,7 +20,7 @@ interface MessageBubbleProps {
   isStreaming?: boolean;
 }
 
-function ToolCallIndicator({ toolCall }: { toolCall: ToolCall }) {
+function ToolCallIndicator({ toolCall, isMobile }: { toolCall: ToolCall; isMobile: boolean }) {
   const isRunning = toolCall.status === 'running' || toolCall.status === 'pending';
 
   return (
@@ -26,30 +28,41 @@ function ToolCallIndicator({ toolCall }: { toolCall: ToolCall }) {
       sx={{
         display: 'flex',
         alignItems: 'center',
-        gap: 1,
+        gap: { xs: 0.75, sm: 1 },
         mt: 1,
-        p: 1.5,
+        p: { xs: 1, sm: 1.5 },
         bgcolor: 'rgba(255, 153, 0, 0.08)',
-        borderRadius: 2,
+        borderRadius: 1.5,
         border: `1px solid ${colors.primary}20`,
       }}
     >
       {isRunning ? (
-        <CircularProgress size={16} sx={{ color: colors.primary }} />
+        <CircularProgress size={isMobile ? 14 : 16} sx={{ color: colors.primary }} />
       ) : (
-        <ToolIcon sx={{ fontSize: 16, color: colors.primary }} />
+        <CheckIcon sx={{ fontSize: isMobile ? 14 : 16, color: colors.success }} />
       )}
-      <Typography variant="caption" sx={{ fontWeight: 500, color: colors.dark }}>
+      <Typography
+        variant="caption"
+        sx={{
+          fontWeight: 500,
+          color: colors.dark,
+          fontSize: { xs: '0.7rem', sm: '0.75rem' },
+        }}
+      >
         {isRunning ? 'Ejecutando' : 'Completado'}:
       </Typography>
       <Chip
         label={toolCall.tool_name}
         size="small"
         sx={{
-          bgcolor: colors.primary,
+          bgcolor: isRunning ? colors.primary : colors.success,
           color: colors.white,
           fontWeight: 600,
-          fontSize: '0.7rem',
+          fontSize: { xs: '0.65rem', sm: '0.7rem' },
+          height: { xs: 20, sm: 22 },
+          '& .MuiChip-label': {
+            px: { xs: 1, sm: 1.5 },
+          },
         }}
       />
     </Box>
@@ -60,6 +73,9 @@ export const MessageBubble = memo(function MessageBubble({
   message,
   isStreaming = false,
 }: MessageBubbleProps) {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+
   const isUser = message.role === 'user';
   const isAssistant = message.role === 'assistant';
 
@@ -68,29 +84,32 @@ export const MessageBubble = memo(function MessageBubble({
       sx={{
         display: 'flex',
         flexDirection: isUser ? 'row-reverse' : 'row',
-        gap: { xs: 1, sm: 1.5 },
-        mb: { xs: 1.5, sm: 2 },
+        gap: { xs: 0.75, sm: 1.5 },
+        mb: { xs: 1, sm: 1.5, md: 2 },
         maxWidth: '100%',
+        px: { xs: 0, sm: 0.5 },
       }}
     >
       {/* Avatar */}
       <Box
         sx={{
-          width: { xs: 28, sm: 36 },
-          height: { xs: 28, sm: 36 },
+          width: { xs: 28, sm: 32, md: 36 },
+          height: { xs: 28, sm: 32, md: 36 },
           borderRadius: '50%',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           bgcolor: isUser ? colors.dark : colors.primary,
           flexShrink: 0,
-          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)',
+          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.12)',
+          alignSelf: 'flex-start',
+          mt: 0.5,
         }}
       >
         {isUser ? (
-          <UserIcon sx={{ fontSize: { xs: 16, sm: 20 }, color: colors.white }} />
+          <UserIcon sx={{ fontSize: { xs: 14, sm: 16, md: 18 }, color: colors.white }} />
         ) : (
-          <BotIcon sx={{ fontSize: { xs: 16, sm: 20 }, color: colors.white }} />
+          <BotIcon sx={{ fontSize: { xs: 14, sm: 16, md: 18 }, color: colors.white }} />
         )}
       </Box>
 
@@ -98,66 +117,51 @@ export const MessageBubble = memo(function MessageBubble({
       <Paper
         elevation={0}
         sx={{
-          maxWidth: { xs: '85%', sm: '75%' },
-          p: { xs: 1.5, sm: 2 },
-          borderRadius: { xs: 2, sm: 3 },
+          maxWidth: { xs: 'calc(100% - 40px)', sm: '80%', md: '75%' },
+          minWidth: { xs: 60, sm: 80 },
+          p: { xs: 1.25, sm: 1.5, md: 2 },
+          borderRadius: { xs: 2, sm: 2.5, md: 3 },
           bgcolor: isUser ? colors.dark : colors.bgLight,
           color: isUser ? colors.white : colors.dark,
           position: 'relative',
-          '&::before': {
-            display: { xs: 'none', sm: 'block' },
-            ...(isUser
-              ? {
-                  content: '""',
-                  position: 'absolute',
-                  right: -8,
-                  top: 12,
-                  width: 0,
-                  height: 0,
-                  borderTop: '8px solid transparent',
-                  borderBottom: '8px solid transparent',
-                  borderLeft: `8px solid ${colors.dark}`,
-                }
-              : {
-                  content: '""',
-                  position: 'absolute',
-                  left: -8,
-                  top: 12,
-                  width: 0,
-                  height: 0,
-                  borderTop: '8px solid transparent',
-                  borderBottom: '8px solid transparent',
-                  borderRight: `8px solid ${colors.bgLight}`,
-                }),
-          },
+          wordBreak: 'break-word',
         }}
       >
         <Typography
-          variant="body1"
+          component="div"
           sx={{
             whiteSpace: 'pre-wrap',
             wordBreak: 'break-word',
             color: isUser ? colors.white : colors.textParagraph,
             lineHeight: 1.6,
-            fontSize: { xs: '0.875rem', sm: '1rem' },
+            fontSize: { xs: '0.85rem', sm: '0.9rem', md: '1rem' },
             '& code': {
-              bgcolor: isUser ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.05)',
+              bgcolor: isUser ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.06)',
               px: 0.5,
               py: 0.25,
-              borderRadius: 1,
-              fontFamily: 'monospace',
-              fontSize: '0.8em',
+              borderRadius: 0.5,
+              fontFamily: '"Fira Code", "Monaco", monospace',
+              fontSize: '0.85em',
             },
             '& pre': {
               bgcolor: isUser ? 'rgba(255,255,255,0.1)' : colors.dark,
               color: isUser ? colors.white : colors.bgLight,
               p: { xs: 1, sm: 1.5 },
-              borderRadius: 2,
+              borderRadius: 1.5,
               overflow: 'auto',
-              fontSize: { xs: '0.75rem', sm: '0.875rem' },
+              fontSize: { xs: '0.75rem', sm: '0.8rem', md: '0.875rem' },
+              my: 1,
               '& code': {
                 bgcolor: 'transparent',
+                p: 0,
               },
+            },
+            // Markdown-like formatting
+            '& strong, & b': {
+              fontWeight: 600,
+            },
+            '& em, & i': {
+              fontStyle: 'italic',
             },
           }}
         >
@@ -167,10 +171,11 @@ export const MessageBubble = memo(function MessageBubble({
               component="span"
               sx={{
                 display: 'inline-block',
-                width: 8,
-                height: 16,
+                width: { xs: 6, sm: 8 },
+                height: { xs: 14, sm: 16 },
                 bgcolor: colors.primary,
                 ml: 0.5,
+                borderRadius: 0.5,
                 animation: 'blink 1s infinite',
                 '@keyframes blink': {
                   '0%, 50%': { opacity: 1 },
@@ -183,7 +188,7 @@ export const MessageBubble = memo(function MessageBubble({
 
         {/* Tool calls */}
         {message.tool_calls?.calls?.map((toolCall, index) => (
-          <ToolCallIndicator key={index} toolCall={toolCall} />
+          <ToolCallIndicator key={index} toolCall={toolCall} isMobile={isMobile} />
         ))}
       </Paper>
     </Box>

@@ -1,12 +1,12 @@
 /**
  * Navigation sidebar component
  * SCRAM styled with session list and navigation
+ * Fully responsive for mobile, tablet, and desktop
  */
 
 import { memo } from 'react';
 import {
   Box,
-  Drawer,
   List,
   ListItem,
   ListItemButton,
@@ -16,15 +16,13 @@ import {
   Typography,
   Divider,
   Tooltip,
-  useMediaQuery,
-  useTheme,
+  alpha,
 } from '@mui/material';
 import {
   Chat as ChatIcon,
   Folder as FolderIcon,
   Add as AddIcon,
   Delete as DeleteIcon,
-  Menu as MenuIcon,
 } from '@mui/icons-material';
 import { colors } from '@/theme';
 import type { ChatSession, ViewType } from '@/types';
@@ -39,9 +37,8 @@ interface SidebarProps {
   onSessionSelect: (sessionId: string) => void;
   onSessionDelete: (sessionId: string) => void;
   onNewChat: () => void;
+  isMobile?: boolean;
 }
-
-const DRAWER_WIDTH = 280;
 
 export const Sidebar = memo(function Sidebar({
   open,
@@ -53,10 +50,8 @@ export const Sidebar = memo(function Sidebar({
   onSessionSelect,
   onSessionDelete,
   onNewChat,
+  isMobile = false,
 }: SidebarProps) {
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
-
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
     const now = new Date();
@@ -68,34 +63,37 @@ export const Sidebar = memo(function Sidebar({
     return date.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
   };
 
-  const drawerContent = (
+  return (
     <Box
       sx={{
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
         bgcolor: colors.white,
+        overflow: 'hidden',
       }}
     >
       {/* Logo / Brand */}
       <Box
         sx={{
-          p: 2,
+          p: isMobile ? 2 : 2.5,
           display: 'flex',
           alignItems: 'center',
           gap: 1.5,
+          flexShrink: 0,
         }}
       >
         <Box
           sx={{
-            width: 40,
-            height: 40,
+            width: isMobile ? 36 : 40,
+            height: isMobile ? 36 : 40,
             borderRadius: 2,
             background: `linear-gradient(135deg, ${colors.primary} 0%, ${colors.primaryHover} 100%)`,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             boxShadow: `0 4px 12px ${colors.primary}40`,
+            flexShrink: 0,
           }}
         >
           <Typography
@@ -104,7 +102,7 @@ export const Sidebar = memo(function Sidebar({
               fontWeight: 700,
               fontFamily: '"Asap", sans-serif',
               fontStyle: 'italic',
-              fontSize: '1.2rem',
+              fontSize: isMobile ? '1rem' : '1.2rem',
             }}
           >
             S
@@ -117,6 +115,8 @@ export const Sidebar = memo(function Sidebar({
             fontWeight: 700,
             fontStyle: 'italic',
             color: colors.dark,
+            fontSize: isMobile ? '1rem' : '1.125rem',
+            whiteSpace: 'nowrap',
           }}
         >
           AI-SupraAgent
@@ -126,7 +126,7 @@ export const Sidebar = memo(function Sidebar({
       <Divider />
 
       {/* Navigation */}
-      <List sx={{ px: 1, py: 1 }}>
+      <List sx={{ px: 1, py: 1, flexShrink: 0 }}>
         <ListItem disablePadding>
           <ListItemButton
             selected={currentView === 'chat'}
@@ -134,6 +134,7 @@ export const Sidebar = memo(function Sidebar({
             sx={{
               borderRadius: 2,
               mb: 0.5,
+              py: isMobile ? 1.25 : 1,
               '&.Mui-selected': {
                 bgcolor: `${colors.primary}15`,
                 '&:hover': {
@@ -150,6 +151,7 @@ export const Sidebar = memo(function Sidebar({
               primaryTypographyProps={{
                 fontWeight: currentView === 'chat' ? 600 : 400,
                 color: currentView === 'chat' ? colors.dark : colors.textParagraph,
+                fontSize: isMobile ? '0.95rem' : '1rem',
               }}
             />
           </ListItemButton>
@@ -161,6 +163,7 @@ export const Sidebar = memo(function Sidebar({
             onClick={() => onViewChange('knowledge')}
             sx={{
               borderRadius: 2,
+              py: isMobile ? 1.25 : 1,
               '&.Mui-selected': {
                 bgcolor: `${colors.primary}15`,
                 '&:hover': {
@@ -175,10 +178,11 @@ export const Sidebar = memo(function Sidebar({
               />
             </ListItemIcon>
             <ListItemText
-              primary="Base de Conocimiento"
+              primary="Conocimiento"
               primaryTypographyProps={{
                 fontWeight: currentView === 'knowledge' ? 600 : 400,
                 color: currentView === 'knowledge' ? colors.dark : colors.textParagraph,
+                fontSize: isMobile ? '0.95rem' : '1rem',
               }}
             />
           </ListItemButton>
@@ -197,9 +201,18 @@ export const Sidebar = memo(function Sidebar({
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
+              flexShrink: 0,
             }}
           >
-            <Typography variant="caption" sx={{ fontWeight: 600, color: colors.textNav }}>
+            <Typography
+              variant="caption"
+              sx={{
+                fontWeight: 600,
+                color: colors.textNav,
+                fontSize: isMobile ? '0.7rem' : '0.75rem',
+                letterSpacing: '0.5px',
+              }}
+            >
               CONVERSACIONES
             </Typography>
             <Tooltip title="Nueva conversacion">
@@ -208,24 +221,45 @@ export const Sidebar = memo(function Sidebar({
                 onClick={onNewChat}
                 sx={{
                   bgcolor: `${colors.primary}15`,
+                  width: isMobile ? 32 : 28,
+                  height: isMobile ? 32 : 28,
                   '&:hover': {
                     bgcolor: `${colors.primary}25`,
                   },
                 }}
               >
-                <AddIcon sx={{ fontSize: 18, color: colors.primary }} />
+                <AddIcon sx={{ fontSize: isMobile ? 20 : 18, color: colors.primary }} />
               </IconButton>
             </Tooltip>
           </Box>
 
-          <List sx={{ flex: 1, overflow: 'auto', px: 1 }}>
+          <List
+            sx={{
+              flex: 1,
+              overflow: 'auto',
+              px: 1,
+              // Custom scrollbar
+              '&::-webkit-scrollbar': {
+                width: 6,
+              },
+              '&::-webkit-scrollbar-thumb': {
+                bgcolor: alpha(colors.textNav, 0.3),
+                borderRadius: 3,
+              },
+              '&::-webkit-scrollbar-track': {
+                bgcolor: 'transparent',
+              },
+            }}
+          >
             {sessions.length === 0 ? (
-              <Typography
-                variant="body2"
-                sx={{ px: 2, py: 4, textAlign: 'center', color: colors.textNav }}
-              >
-                No hay conversaciones
-              </Typography>
+              <Box sx={{ py: 4, textAlign: 'center' }}>
+                <Typography
+                  variant="body2"
+                  sx={{ color: colors.textNav, fontSize: isMobile ? '0.85rem' : '0.875rem' }}
+                >
+                  No hay conversaciones
+                </Typography>
+              </Box>
             ) : (
               sessions.map((session) => (
                 <ListItem
@@ -239,14 +273,15 @@ export const Sidebar = memo(function Sidebar({
                         onSessionDelete(session.id);
                       }}
                       sx={{
-                        opacity: 0,
+                        opacity: isMobile ? 0.7 : 0,
                         transition: 'opacity 0.2s',
+                        p: isMobile ? 1 : 0.5,
                         '.MuiListItem-root:hover &': {
                           opacity: 1,
                         },
                       }}
                     >
-                      <DeleteIcon sx={{ fontSize: 16, color: colors.error }} />
+                      <DeleteIcon sx={{ fontSize: isMobile ? 18 : 16, color: colors.error }} />
                     </IconButton>
                   }
                   sx={{
@@ -262,8 +297,12 @@ export const Sidebar = memo(function Sidebar({
                     sx={{
                       borderRadius: 2,
                       pr: 5,
+                      py: isMobile ? 1.25 : 1,
                       '&.Mui-selected': {
                         bgcolor: `${colors.primary}10`,
+                        '&:hover': {
+                          bgcolor: `${colors.primary}15`,
+                        },
                       },
                     }}
                   >
@@ -272,11 +311,11 @@ export const Sidebar = memo(function Sidebar({
                       secondary={formatDate(session.updated_at)}
                       primaryTypographyProps={{
                         noWrap: true,
-                        fontSize: '0.875rem',
+                        fontSize: isMobile ? '0.9rem' : '0.875rem',
                         fontWeight: session.id === currentSessionId ? 600 : 400,
                       }}
                       secondaryTypographyProps={{
-                        fontSize: '0.75rem',
+                        fontSize: isMobile ? '0.75rem' : '0.7rem',
                       }}
                     />
                   </ListItemButton>
@@ -287,25 +326,5 @@ export const Sidebar = memo(function Sidebar({
         </>
       )}
     </Box>
-  );
-
-  return (
-    <Drawer
-      variant={isMobile ? 'temporary' : 'persistent'}
-      open={open}
-      onClose={onClose}
-      sx={{
-        width: open ? DRAWER_WIDTH : 0,
-        flexShrink: 0,
-        '& .MuiDrawer-paper': {
-          width: DRAWER_WIDTH,
-          boxSizing: 'border-box',
-          borderRight: 'none',
-          boxShadow: '4px 0 20px rgba(0, 0, 0, 0.05)',
-        },
-      }}
-    >
-      {drawerContent}
-    </Drawer>
   );
 });

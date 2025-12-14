@@ -1,9 +1,10 @@
 /**
  * Main App component
  * Integrates sidebar navigation with chat and knowledge views
+ * Full responsive design for mobile, tablet, and desktop
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import {
   Box,
   AppBar,
@@ -12,8 +13,9 @@ import {
   Typography,
   useMediaQuery,
   useTheme,
+  SwipeableDrawer,
 } from '@mui/material';
-import { Menu as MenuIcon } from '@mui/icons-material';
+import { Menu as MenuIcon, Close as CloseIcon } from '@mui/icons-material';
 import { Sidebar } from '@/components/Sidebar';
 import { ChatContainer } from '@/containers/ChatContainer';
 import { KnowledgeContainer } from '@/containers/KnowledgeContainer';
@@ -21,13 +23,16 @@ import { useChat } from '@/hooks/useChat';
 import { colors } from '@/theme';
 import type { ViewType } from '@/types';
 
-const DRAWER_WIDTH = 280;
+const DRAWER_WIDTH_DESKTOP = 280;
+const DRAWER_WIDTH_MOBILE = 300;
 
 function App() {
   const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const isTablet = useMediaQuery(theme.breakpoints.between('sm', 'md'));
+  const isDesktop = useMediaQuery(theme.breakpoints.up('md'));
 
-  const [sidebarOpen, setSidebarOpen] = useState(!isMobile);
+  const [sidebarOpen, setSidebarOpen] = useState(isDesktop);
   const [currentView, setCurrentView] = useState<ViewType>('chat');
 
   const {
@@ -39,32 +44,41 @@ function App() {
     clearMessages,
   } = useChat();
 
+  // Close sidebar on mobile when screen size changes
+  useEffect(() => {
+    if (isMobile || isTablet) {
+      setSidebarOpen(false);
+    } else {
+      setSidebarOpen(true);
+    }
+  }, [isMobile, isTablet]);
+
   const handleSidebarToggle = useCallback(() => {
     setSidebarOpen((prev) => !prev);
   }, []);
 
-  const handleViewChange = useCallback((view: ViewType) => {
-    setCurrentView(view);
-    if (isMobile) {
+  const handleSidebarClose = useCallback(() => {
+    if (isMobile || isTablet) {
       setSidebarOpen(false);
     }
-  }, [isMobile]);
+  }, [isMobile, isTablet]);
+
+  const handleViewChange = useCallback((view: ViewType) => {
+    setCurrentView(view);
+    handleSidebarClose();
+  }, [handleSidebarClose]);
 
   const handleNewChat = useCallback(async () => {
     clearMessages();
-    if (isMobile) {
-      setSidebarOpen(false);
-    }
-  }, [clearMessages, isMobile]);
+    handleSidebarClose();
+  }, [clearMessages, handleSidebarClose]);
 
   const handleSessionSelect = useCallback(
     (sessionId: string) => {
       selectSession(sessionId);
-      if (isMobile) {
-        setSidebarOpen(false);
-      }
+      handleSidebarClose();
     },
-    [selectSession, isMobile]
+    [selectSession, handleSidebarClose]
   );
 
   const handleSessionDelete = useCallback(
@@ -74,20 +88,78 @@ function App() {
     [deleteSession]
   );
 
+  const drawerWidth = isMobile ? DRAWER_WIDTH_MOBILE : DRAWER_WIDTH_DESKTOP;
+
+  const sidebarContent = (
+    <Sidebar
+      open={sidebarOpen}
+      onClose={handleSidebarClose}
+      currentView={currentView}
+      onViewChange={handleViewChange}
+      sessions={sessions}
+      currentSessionId={currentSession?.id ?? null}
+      onSessionSelect={handleSessionSelect}
+      onSessionDelete={handleSessionDelete}
+      onNewChat={handleNewChat}
+      isMobile={isMobile || isTablet}
+    />
+  );
+
   return (
-    <Box sx={{ display: 'flex', height: '100vh', bgcolor: colors.bgLight }}>
-      {/* Sidebar */}
-      <Sidebar
-        open={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
-        currentView={currentView}
-        onViewChange={handleViewChange}
-        sessions={sessions}
-        currentSessionId={currentSession?.id ?? null}
-        onSessionSelect={handleSessionSelect}
-        onSessionDelete={handleSessionDelete}
-        onNewChat={handleNewChat}
-      />
+    <Box sx={{ display: 'flex', height: '100dvh', bgcolor: colors.bgLight }}>
+      {/* Mobile/Tablet: Swipeable Drawer */}
+      {(isMobile || isTablet) ? (
+        <SwipeableDrawer
+          open={sidebarOpen}
+          onClose={handleSidebarClose}
+          onOpen={() => setSidebarOpen(true)}
+          disableSwipeToOpen={false}
+          swipeAreaWidth={20}
+          ModalProps={{
+            keepMounted: true,
+          }}
+          sx={{
+            '& .MuiDrawer-paper': {
+              width: drawerWidth,
+              maxWidth: '85vw',
+              boxSizing: 'border-box',
+              borderRight: 'none',
+              boxShadow: '4px 0 20px rgba(0, 0, 0, 0.15)',
+            },
+          }}
+        >
+          {sidebarContent}
+        </SwipeableDrawer>
+      ) : (
+        /* Desktop: Persistent Drawer */
+        <Box
+          sx={{
+            width: sidebarOpen ? drawerWidth : 0,
+            flexShrink: 0,
+            transition: theme.transitions.create('width', {
+              easing: theme.transitions.easing.sharp,
+              duration: theme.transitions.duration.enteringScreen,
+            }),
+          }}
+        >
+          <Box
+            sx={{
+              width: drawerWidth,
+              height: '100%',
+              position: 'fixed',
+              left: sidebarOpen ? 0 : -drawerWidth,
+              transition: theme.transitions.create('left', {
+                easing: theme.transitions.easing.sharp,
+                duration: theme.transitions.duration.enteringScreen,
+              }),
+              boxShadow: '4px 0 20px rgba(0, 0, 0, 0.05)',
+              zIndex: theme.zIndex.drawer,
+            }}
+          >
+            {sidebarContent}
+          </Box>
+        </Box>
+      )}
 
       {/* Main Content */}
       <Box
@@ -96,22 +168,10 @@ function App() {
           flexGrow: 1,
           display: 'flex',
           flexDirection: 'column',
-          height: '100vh',
+          height: '100dvh',
           width: '100%',
+          minWidth: 0,
           overflow: 'hidden',
-          transition: theme.transitions.create(['margin'], {
-            easing: theme.transitions.easing.sharp,
-            duration: theme.transitions.duration.leavingScreen,
-          }),
-          // On mobile, always show full width (sidebar is overlay)
-          // On desktop, shift content when sidebar is open
-          ml: isMobile ? 0 : (sidebarOpen ? 0 : `-${DRAWER_WIDTH}px`),
-          ...(sidebarOpen && !isMobile && {
-            transition: theme.transitions.create(['margin'], {
-              easing: theme.transitions.easing.easeOut,
-              duration: theme.transitions.duration.enteringScreen,
-            }),
-          }),
         }}
       >
         {/* App Bar */}
@@ -121,21 +181,33 @@ function App() {
           sx={{
             bgcolor: colors.white,
             borderBottom: `1px solid ${colors.border}`,
+            zIndex: theme.zIndex.appBar,
           }}
         >
-          <Toolbar sx={{ minHeight: { xs: 56, sm: 64 }, px: { xs: 1, sm: 2 } }}>
+          <Toolbar
+            sx={{
+              minHeight: { xs: 52, sm: 56, md: 64 },
+              px: { xs: 1, sm: 1.5, md: 2 },
+              gap: { xs: 0.5, sm: 1 },
+            }}
+          >
             <IconButton
               edge="start"
               onClick={handleSidebarToggle}
+              aria-label="toggle sidebar"
               sx={{
-                mr: { xs: 1, sm: 2 },
                 color: colors.dark,
+                p: { xs: 1, sm: 1.25 },
                 '&:hover': {
                   bgcolor: `${colors.primary}10`,
                 },
               }}
             >
-              <MenuIcon />
+              {sidebarOpen && (isMobile || isTablet) ? (
+                <CloseIcon sx={{ fontSize: { xs: 22, sm: 24 } }} />
+              ) : (
+                <MenuIcon sx={{ fontSize: { xs: 22, sm: 24 } }} />
+              )}
             </IconButton>
             <Typography
               variant="h6"
@@ -144,7 +216,8 @@ function App() {
                 fontFamily: '"Asap", sans-serif',
                 fontWeight: 600,
                 color: colors.dark,
-                fontSize: { xs: '1rem', sm: '1.25rem' },
+                fontSize: { xs: '0.9rem', sm: '1rem', md: '1.25rem' },
+                flex: 1,
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
               }}
@@ -157,7 +230,7 @@ function App() {
         </AppBar>
 
         {/* Content Area */}
-        <Box sx={{ flex: 1, overflow: 'hidden' }}>
+        <Box sx={{ flex: 1, overflow: 'hidden', minHeight: 0 }}>
           {currentView === 'chat' ? (
             <ChatContainer sessionId={currentSession?.id} />
           ) : (
