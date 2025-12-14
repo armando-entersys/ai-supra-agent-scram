@@ -307,6 +307,10 @@ async def stream_chat(
                 elif event["type"] == "error":
                     yield f"data: {json.dumps({'event': 'error', 'data': event['message']})}\n\n"
 
+                elif event["type"] == "done":
+                    # Orchestrator signals it's done, break to save and send final done event
+                    break
+
             # Save assistant response
             assistant_message = ChatMessage(
                 session_id=session.id,

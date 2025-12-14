@@ -258,17 +258,31 @@ Formato de respuesta:
                             )
 
                             # Get follow-up response
-                            follow_up = self.model.generate_content(
-                                contents,
-                                stream=True,
-                            )
-                            for follow_chunk in follow_up:
-                                if follow_chunk.text:
-                                    yield {"type": "text", "content": follow_chunk.text}
+                            try:
+                                logger.info("Generating follow-up response after tool execution")
+                                follow_up = self.model.generate_content(
+                                    contents,
+                                    stream=True,
+                                )
+                                for follow_chunk in follow_up:
+                                    if follow_chunk.text:
+                                        yield {"type": "text", "content": follow_chunk.text}
+                                logger.info("Follow-up response completed")
+                            except Exception as follow_up_error:
+                                logger.error("Follow-up generation failed", error=str(follow_up_error), exc_info=True)
+                                # Provide a fallback response with the tool result
+                                yield {
+                                    "type": "text",
+                                    "content": f"El resultado de la herramienta: {json.dumps(result, ensure_ascii=False, indent=2)}"
+                                }
 
                         elif hasattr(part, "text") and part.text:
                             yield {"type": "text", "content": part.text}
 
+            # Emit done event
+            yield {"type": "done"}
+
         except Exception as e:
             logger.error("Stream response error", error=str(e), exc_info=True)
             yield {"type": "error", "message": str(e)}
+            yield {"type": "done"}
