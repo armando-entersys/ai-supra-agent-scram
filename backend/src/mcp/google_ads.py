@@ -278,28 +278,39 @@ class GoogleAdsTool:
         Returns:
             List of client customer IDs
         """
-        customer_service = self.client.get_service("CustomerService")
-        accessible_customers = customer_service.list_accessible_customers()
+        try:
+            customer_service = self.client.get_service("CustomerService")
+            accessible_customers = customer_service.list_accessible_customers()
 
-        client_accounts = []
-        ga_service = self.client.get_service("GoogleAdsService")
+            client_accounts = []
+            ga_service = self.client.get_service("GoogleAdsService")
 
-        for resource_name in accessible_customers.resource_names:
-            customer_id = resource_name.split("/")[-1]
-            try:
-                # Check if this is a manager account by querying customer info
-                query = "SELECT customer.manager FROM customer LIMIT 1"
-                response = ga_service.search(customer_id=customer_id, query=query)
-                for row in response:
-                    # If not a manager account, add to client list
-                    if not row.customer.manager:
+            # Convert to list to avoid iterator issues
+            resource_names = list(accessible_customers.resource_names)
+            logger.info("Found accessible customers", count=len(resource_names))
+
+            for resource_name in resource_names:
+                customer_id = resource_name.split("/")[-1]
+                try:
+                    # Check if this is a manager account by querying customer info
+                    query = "SELECT customer.manager FROM customer LIMIT 1"
+                    response = ga_service.search(customer_id=customer_id, query=query)
+                    rows = list(response)  # Convert to list
+                    if rows and not rows[0].customer.manager:
                         client_accounts.append(customer_id)
-                    break
-            except GoogleAdsException:
-                # If we can't query, skip this account
-                continue
+                        logger.info("Added client account", customer_id=customer_id)
+                except GoogleAdsException as e:
+                    # If we can't query, skip this account
+                    logger.debug("Skipping account", customer_id=customer_id, error=str(e))
+                    continue
+                except Exception as e:
+                    logger.warning("Error checking account", customer_id=customer_id, error=str(e))
+                    continue
 
-        return client_accounts
+            return client_accounts
+        except Exception as e:
+            logger.error("Failed to get client accounts", error=str(e), exc_info=True)
+            return []
 
     async def _list_campaigns_for_customer(
         self, customer_id: str, status_filter: str, ga_service: Any
@@ -326,29 +337,36 @@ class GoogleAdsTool:
         if status_filter != "ALL":
             query += f" AND campaign.status = '{status_filter}'"
 
-        query += " ORDER BY metrics.impressions DESC"
+        query += " ORDER BY metrics.impressions DESC LIMIT 50"
 
         response = ga_service.search(customer_id=customer_id, query=query)
 
         campaigns = []
-        for row in response:
-            campaigns.append({
-                "id": row.campaign.id,
-                "name": row.campaign.name,
-                "status": row.campaign.status.name,
-                "channel_type": row.campaign.advertising_channel_type.name,
-                "bidding_strategy": row.campaign.bidding_strategy_type.name,
-                "budget_micros": row.campaign_budget.amount_micros,
-                "budget": row.campaign_budget.amount_micros / 1_000_000,
-                "impressions": row.metrics.impressions,
-                "clicks": row.metrics.clicks,
-                "cost_micros": row.metrics.cost_micros,
-                "cost": row.metrics.cost_micros / 1_000_000,
-                "conversions": row.metrics.conversions,
-                "ctr": round(row.metrics.ctr * 100, 2),
-                "avg_cpc": row.metrics.average_cpc / 1_000_000,
-                "customer_id": customer_id,
-            })
+        # Convert iterator to list to avoid potential issues
+        rows = list(response)
+
+        for row in rows:
+            try:
+                campaigns.append({
+                    "id": str(row.campaign.id),
+                    "name": row.campaign.name,
+                    "status": row.campaign.status.name,
+                    "channel_type": row.campaign.advertising_channel_type.name,
+                    "bidding_strategy": row.campaign.bidding_strategy_type.name,
+                    "budget_micros": row.campaign_budget.amount_micros,
+                    "budget": row.campaign_budget.amount_micros / 1_000_000,
+                    "impressions": row.metrics.impressions,
+                    "clicks": row.metrics.clicks,
+                    "cost_micros": row.metrics.cost_micros,
+                    "cost": row.metrics.cost_micros / 1_000_000,
+                    "conversions": row.metrics.conversions,
+                    "ctr": round(row.metrics.ctr * 100, 2) if row.metrics.ctr else 0,
+                    "avg_cpc": row.metrics.average_cpc / 1_000_000 if row.metrics.average_cpc else 0,
+                    "customer_id": customer_id,
+                })
+            except Exception as row_error:
+                logger.warning("Error processing campaign row", error=str(row_error))
+                continue
 
         return campaigns
 
@@ -363,14 +381,21 @@ class GoogleAdsTool:
         if not customer_id:
             return {"error": "Customer ID is required"}
 
-        logger.info("Listing campaigns", customer_id=customer_id)
-        ga_service = self.client.get_service("GoogleAdsService")
+        logger.info("Listing campaigns", customer_id=customer_id, status_filter=status_filter)
+
+        try:
+            ga_service = self.client.get_service("GoogleAdsService")
+        except Exception as e:
+            logger.error("Failed to get GoogleAdsService", error=str(e))
+            return {"error": f"Failed to initialize Google Ads service: {str(e)}"}
 
         # First, try to get campaigns directly
         try:
+            logger.info("Attempting direct campaign query", customer_id=customer_id)
             campaigns = await self._list_campaigns_for_customer(
                 customer_id, status_filter, ga_service
             )
+            logger.info("Direct query successful", campaign_count=len(campaigns))
             return {
                 "success": True,
                 "customer_id": customer_id,
@@ -379,25 +404,38 @@ class GoogleAdsTool:
             }
         except GoogleAdsException as ex:
             # Check if this is because it's a manager account
-            is_manager_error = any(
-                "CUSTOMER_NOT_ENABLED" in str(error.error_code) or
-                "manager" in error.message.lower()
-                for error in ex.failure.errors
-            )
+            error_messages = []
+            is_manager_error = False
+            for error in ex.failure.errors:
+                error_str = str(error.error_code)
+                error_messages.append(f"{error_str}: {error.message}")
+                if "CUSTOMER_NOT_ENABLED" in error_str or "manager" in error.message.lower():
+                    is_manager_error = True
+
+            logger.info("Direct query failed", errors=error_messages, is_manager=is_manager_error)
 
             if not is_manager_error:
-                raise  # Re-raise if it's a different error
+                return {"error": "Google Ads API error", "details": error_messages}
 
             logger.info("Detected MCC account, querying client accounts", customer_id=customer_id)
+        except Exception as e:
+            logger.error("Unexpected error in direct campaign query", error=str(e), exc_info=True)
+            return {"error": f"Failed to query campaigns: {str(e)}"}
 
         # If we're here, it's an MCC account - get campaigns from all client accounts
-        client_accounts = await self._get_client_accounts()
+        try:
+            client_accounts = await self._get_client_accounts()
+        except Exception as e:
+            logger.error("Failed to get client accounts", error=str(e))
+            return {"error": f"Failed to get client accounts: {str(e)}"}
 
         if not client_accounts:
             return {
                 "error": "No client accounts found under this MCC account",
                 "mcc_customer_id": customer_id
             }
+
+        logger.info("Found client accounts", count=len(client_accounts))
 
         all_campaigns = []
         accounts_queried = []
@@ -415,6 +453,9 @@ class GoogleAdsTool:
                 error_msg = ex.failure.errors[0].message if ex.failure.errors else str(ex)
                 errors.append({"customer_id": client_id, "error": error_msg})
                 logger.warning("Failed to get campaigns from client", client_id=client_id, error=error_msg)
+            except Exception as e:
+                errors.append({"customer_id": client_id, "error": str(e)})
+                logger.warning("Unexpected error getting campaigns", client_id=client_id, error=str(e))
 
         # Sort by impressions
         all_campaigns.sort(key=lambda x: x.get("impressions", 0), reverse=True)
@@ -424,7 +465,7 @@ class GoogleAdsTool:
             "mcc_customer_id": customer_id,
             "accounts_queried": accounts_queried,
             "campaign_count": len(all_campaigns),
-            "campaigns": all_campaigns,
+            "campaigns": all_campaigns[:50],  # Limit response size
             "errors": errors if errors else None
         }
 
