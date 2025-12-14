@@ -199,13 +199,16 @@ Formato de respuesta:
                 )
 
             # Start streaming
+            logger.info("Starting Gemini stream")
             response = self.model.generate_content(
                 contents,
                 stream=True,
             )
 
+            chunk_count = 0
             # Process response chunks
             for chunk in response:
+                chunk_count += 1
                 # Check for function calls
                 if chunk.candidates and chunk.candidates[0].content.parts:
                     for part in chunk.candidates[0].content.parts:
@@ -278,7 +281,12 @@ Formato de respuesta:
 
                         elif hasattr(part, "text") and part.text:
                             yield {"type": "text", "content": part.text}
+                else:
+                    # Log when chunk has no usable content
+                    if chunk_count <= 3:
+                        logger.debug("Chunk has no candidates or parts", chunk_num=chunk_count)
 
+            logger.info("Gemini stream completed", total_chunks=chunk_count)
             # Emit done event
             yield {"type": "done"}
 
