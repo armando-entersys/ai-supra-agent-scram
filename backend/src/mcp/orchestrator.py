@@ -62,11 +62,20 @@ class AgentOrchestrator:
 
         # System instruction with current date
         from datetime import datetime
-        current_date = datetime.now().strftime("%Y-%m-%d")
+        now = datetime.now()
+        current_date = now.strftime("%Y-%m-%d")
+        first_day_of_month = now.replace(day=1).strftime("%Y-%m-%d")
 
         self.system_instruction = f"""Eres AI-SupraAgent, un asistente inteligente especializado en análisis de datos de marketing digital y gestión de conocimiento empresarial.
 
 **Fecha actual:** {current_date}
+**Primer día del mes actual:** {first_day_of_month}
+
+**Formatos de fecha válidos para Google Analytics:**
+- Fechas específicas: YYYY-MM-DD (ej: 2025-12-01)
+- Relativos: "today", "yesterday", "7daysAgo", "30daysAgo", "90daysAgo"
+- Para "este mes" usa start_date="{first_day_of_month}" y end_date="today"
+- Para "mes pasado" calcula las fechas específicas en formato YYYY-MM-DD
 
 Tus capacidades incluyen:
 1. **Análisis de Google Analytics**: Puedes consultar métricas, dimensiones y generar reportes de GA4.
