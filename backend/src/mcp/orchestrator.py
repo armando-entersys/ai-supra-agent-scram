@@ -290,24 +290,86 @@ Formato de respuesta:
                                 )
                             )
 
-                            # Get follow-up response
-                            try:
-                                logger.info("Generating follow-up response after tool execution")
-                                follow_up = self.model.generate_content(
-                                    contents,
-                                    stream=True,
-                                )
-                                for follow_chunk in follow_up:
-                                    if follow_chunk.text:
-                                        yield {"type": "text", "content": follow_chunk.text}
-                                logger.info("Follow-up response completed")
-                            except Exception as follow_up_error:
-                                logger.error("Follow-up generation failed", error=str(follow_up_error), exc_info=True)
-                                # Provide a fallback response with the tool result
-                                yield {
-                                    "type": "text",
-                                    "content": f"El resultado de la herramienta: {json.dumps(result, ensure_ascii=False, indent=2)}"
-                                }
+                            # Get follow-up response - handle chained tool calls
+                            max_tool_calls = 10  # Prevent infinite loops
+                            tool_call_count = 1
+
+                            while tool_call_count < max_tool_calls:
+                                try:
+                                    logger.info("Generating follow-up response after tool execution", iteration=tool_call_count)
+                                    follow_up = self.model.generate_content(
+                                        contents,
+                                        stream=True,
+                                    )
+
+                                    has_function_call = False
+                                    for follow_chunk in follow_up:
+                                        if follow_chunk.candidates and follow_chunk.candidates[0].content.parts:
+                                            for follow_part in follow_chunk.candidates[0].content.parts:
+                                                if hasattr(follow_part, "function_call") and follow_part.function_call:
+                                                    # Another tool call - execute it
+                                                    has_function_call = True
+                                                    fc = follow_part.function_call
+                                                    next_tool_name = fc.name
+                                                    next_tool_args = dict(fc.args) if fc.args else {}
+
+                                                    yield {
+                                                        "type": "tool_call",
+                                                        "data": {
+                                                            "tool_name": next_tool_name,
+                                                            "tool_input": next_tool_args,
+                                                            "status": "running",
+                                                        },
+                                                    }
+
+                                                    next_result = await self._execute_tool(next_tool_name, next_tool_args)
+
+                                                    yield {
+                                                        "type": "tool_call",
+                                                        "data": {
+                                                            "tool_name": next_tool_name,
+                                                            "tool_input": next_tool_args,
+                                                            "status": "completed",
+                                                            "result": next_result,
+                                                        },
+                                                    }
+
+                                                    # Add to conversation
+                                                    contents.append(
+                                                        Content(role="model", parts=[follow_part])
+                                                    )
+                                                    contents.append(
+                                                        Content(
+                                                            role="user",
+                                                            parts=[
+                                                                Part.from_function_response(
+                                                                    name=next_tool_name,
+                                                                    response={"result": next_result},
+                                                                )
+                                                            ],
+                                                        )
+                                                    )
+                                                    tool_call_count += 1
+                                                    break  # Break to generate next follow-up
+
+                                                elif hasattr(follow_part, "text") and follow_part.text:
+                                                    yield {"type": "text", "content": follow_part.text}
+
+                                        # Also check direct text access for streaming
+                                        elif hasattr(follow_chunk, "text") and follow_chunk.text:
+                                            yield {"type": "text", "content": follow_chunk.text}
+
+                                    if not has_function_call:
+                                        logger.info("Follow-up response completed", total_tool_calls=tool_call_count)
+                                        break
+
+                                except Exception as follow_up_error:
+                                    logger.error("Follow-up generation failed", error=str(follow_up_error), exc_info=True)
+                                    yield {
+                                        "type": "text",
+                                        "content": f"El resultado de la herramienta: {json.dumps(result, ensure_ascii=False, indent=2)}"
+                                    }
+                                    break
 
                         elif hasattr(part, "text") and part.text:
                             yield {"type": "text", "content": part.text}
