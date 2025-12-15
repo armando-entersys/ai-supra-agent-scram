@@ -96,6 +96,8 @@ Si pide datos de "todas las propiedades", consulta las 3 y presenta una comparat
 - NO pidas el customer_id al usuario, usa la herramienta directamente sin especificarlo.
 - Para listar campañas usa `google_ads_list_campaigns` sin parámetros.
 - Las campañas incluyen datos de todas las cuentas cliente bajo la cuenta MCC.
+- IMPORTANTE: Cuando consultes ad_groups o keywords, usa el `id` numérico de la campaña (ej: "21732337228"), NO el nombre.
+- IMPORTANTE: Incluye el `customer_id` de la campaña al consultar detalles (ad_groups, keywords, performance).
 
 Directrices:
 - Responde siempre en español a menos que el usuario escriba en otro idioma.
