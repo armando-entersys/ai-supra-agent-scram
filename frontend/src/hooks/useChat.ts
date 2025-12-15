@@ -2,7 +2,7 @@
  * Custom hook for chat functionality with streaming
  */
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { chatService } from '@/services/chat';
 import type { ChatMessage, ChatSession, ToolCall, StreamEvent } from '@/types';
@@ -40,6 +40,19 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
   const queryClient = useQueryClient();
   const abortControllerRef = useRef<AbortController | null>(null);
 
+  // Sync internal state when external sessionId prop changes
+  useEffect(() => {
+    const newSessionId = initialSessionId ?? null;
+    if (newSessionId !== currentSessionId) {
+      setCurrentSessionId(newSessionId);
+      setMessages([]);
+      // Invalidate cached messages to force refetch
+      if (newSessionId) {
+        queryClient.invalidateQueries({ queryKey: ['chat-messages', newSessionId] });
+      }
+    }
+  }, [initialSessionId, queryClient]);
+
   // Fetch sessions
   const { data: sessions = [], isLoading: sessionsLoading } = useQuery({
     queryKey: ['chat-sessions'],
@@ -63,6 +76,7 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
       return msgs;
     },
     enabled: !!currentSessionId,
+    staleTime: 0, // Always refetch when session changes
   });
 
   // Create session mutation
@@ -139,12 +153,15 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
             );
           } else if (event.event === 'tool_call') {
             const toolCall = event.data as ToolCall;
-            setActiveToolCall(toolCall);
-            if (toolCall.status === 'completed') {
+            if (toolCall.status === 'running') {
+              setActiveToolCall(toolCall);
+            } else if (toolCall.status === 'completed' || toolCall.status === 'error') {
               toolCalls.push(toolCall);
               setActiveToolCall(null);
             }
           } else if (event.event === 'done') {
+            // Always clear tool call on done
+            setActiveToolCall(null);
             const doneData = event.data as { session_id: string };
             if (!currentSessionId && doneData.session_id) {
               setCurrentSessionId(doneData.session_id);
@@ -187,7 +204,9 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
   const selectSession = useCallback((sessionId: string) => {
     setCurrentSessionId(sessionId);
     setMessages([]);
-  }, []);
+    // Invalidate to force refetch
+    queryClient.invalidateQueries({ queryKey: ['chat-messages', sessionId] });
+  }, [queryClient]);
 
   const deleteSession = useCallback(
     async (sessionId: string) => {
