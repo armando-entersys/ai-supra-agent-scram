@@ -43,15 +43,9 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
   // Sync internal state when external sessionId prop changes
   useEffect(() => {
     const newSessionId = initialSessionId ?? null;
-    if (newSessionId !== currentSessionId) {
-      setCurrentSessionId(newSessionId);
-      setMessages([]);
-      // Invalidate cached messages to force refetch
-      if (newSessionId) {
-        queryClient.invalidateQueries({ queryKey: ['chat-messages', newSessionId] });
-      }
-    }
-  }, [initialSessionId, queryClient]);
+    setCurrentSessionId(newSessionId);
+    setMessages([]);
+  }, [initialSessionId]);
 
   // Fetch sessions
   const { data: sessions = [], isLoading: sessionsLoading } = useQuery({
@@ -67,17 +61,20 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
   });
 
   // Fetch messages when session changes
-  const { isLoading: messagesLoading } = useQuery({
+  const { data: fetchedMessages, isLoading: messagesLoading } = useQuery({
     queryKey: ['chat-messages', currentSessionId],
-    queryFn: async () => {
-      if (!currentSessionId) return [];
-      const msgs = await chatService.getMessages(currentSessionId);
-      setMessages(msgs);
-      return msgs;
-    },
+    queryFn: () => currentSessionId ? chatService.getMessages(currentSessionId) : Promise.resolve([]),
     enabled: !!currentSessionId,
-    staleTime: 0, // Always refetch when session changes
+    staleTime: 0,
+    gcTime: 0, // Don't cache old messages
   });
+
+  // Update messages state when fetched messages change
+  useEffect(() => {
+    if (fetchedMessages && fetchedMessages.length > 0) {
+      setMessages(fetchedMessages);
+    }
+  }, [fetchedMessages]);
 
   // Create session mutation
   const createSessionMutation = useMutation({
@@ -204,9 +201,7 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
   const selectSession = useCallback((sessionId: string) => {
     setCurrentSessionId(sessionId);
     setMessages([]);
-    // Invalidate to force refetch
-    queryClient.invalidateQueries({ queryKey: ['chat-messages', sessionId] });
-  }, [queryClient]);
+  }, []);
 
   const deleteSession = useCallback(
     async (sessionId: string) => {

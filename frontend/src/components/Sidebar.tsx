@@ -266,23 +266,30 @@ export const Sidebar = memo(function Sidebar({
                   key={session.id}
                   disablePadding
                   secondaryAction={
-                    <IconButton
-                      size="small"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onSessionDelete(session.id);
-                      }}
-                      sx={{
-                        opacity: isMobile ? 0.7 : 0,
-                        transition: 'opacity 0.2s',
-                        p: isMobile ? 1 : 0.5,
-                        '.MuiListItem-root:hover &': {
-                          opacity: 1,
-                        },
-                      }}
-                    >
-                      <DeleteIcon sx={{ fontSize: isMobile ? 18 : 16, color: colors.error }} />
-                    </IconButton>
+                    <Tooltip title="Eliminar conversación">
+                      <IconButton
+                        size="small"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (window.confirm('¿Eliminar esta conversación?')) {
+                            onSessionDelete(session.id);
+                          }
+                        }}
+                        sx={{
+                          opacity: isMobile ? 0.8 : 0,
+                          transition: 'all 0.2s',
+                          p: isMobile ? 1 : 0.5,
+                          '.MuiListItem-root:hover &': {
+                            opacity: 1,
+                          },
+                          '&:hover': {
+                            bgcolor: `${colors.error}15`,
+                          },
+                        }}
+                      >
+                        <DeleteIcon sx={{ fontSize: isMobile ? 18 : 16, color: colors.error }} />
+                      </IconButton>
+                    </Tooltip>
                   }
                   sx={{
                     mb: 0.5,
