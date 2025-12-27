@@ -257,7 +257,17 @@ Formato de respuesta:
                 # Check for function calls
                 if chunk.candidates and chunk.candidates[0].content.parts:
                     for part in chunk.candidates[0].content.parts:
-                        if hasattr(part, "function_call") and part.function_call:
+                        # Log part type for debugging
+                        has_fc = hasattr(part, "function_call") and part.function_call
+                        has_text = hasattr(part, "text") and part.text
+                        if chunk_count <= 3:
+                            logger.info("Processing part",
+                                chunk_num=chunk_count,
+                                has_function_call=has_fc,
+                                has_text=has_text,
+                                part_type=str(type(part).__name__)
+                            )
+                        if has_fc:
                             fc = part.function_call
                             tool_name = fc.name
                             tool_args = dict(fc.args) if fc.args else {}
