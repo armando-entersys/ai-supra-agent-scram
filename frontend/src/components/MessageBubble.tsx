@@ -9,9 +9,10 @@ import { Box, Typography, Paper, Chip, CircularProgress, useMediaQuery, useTheme
 import {
   SmartToy as BotIcon,
   Person as UserIcon,
-  Build as ToolIcon,
   Check as CheckIcon,
 } from '@mui/icons-material';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { colors } from '@/theme';
 import type { ChatMessage, ToolCall } from '@/types';
 
@@ -127,14 +128,16 @@ export const MessageBubble = memo(function MessageBubble({
           wordBreak: 'break-word',
         }}
       >
-        <Typography
-          component="div"
+        <Box
           sx={{
-            whiteSpace: 'pre-wrap',
-            wordBreak: 'break-word',
             color: isUser ? colors.white : colors.textParagraph,
             lineHeight: 1.6,
             fontSize: { xs: '0.85rem', sm: '0.9rem', md: '1rem' },
+            '& p': {
+              margin: 0,
+              marginBottom: 1,
+              '&:last-child': { marginBottom: 0 },
+            },
             '& code': {
               bgcolor: isUser ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.06)',
               px: 0.5,
@@ -156,16 +159,57 @@ export const MessageBubble = memo(function MessageBubble({
                 p: 0,
               },
             },
-            // Markdown-like formatting
             '& strong, & b': {
               fontWeight: 600,
             },
             '& em, & i': {
               fontStyle: 'italic',
             },
+            '& ul, & ol': {
+              pl: 2,
+              my: 1,
+            },
+            '& li': {
+              mb: 0.5,
+            },
+            // Table styling
+            '& table': {
+              width: '100%',
+              borderCollapse: 'collapse',
+              my: 2,
+              fontSize: { xs: '0.75rem', sm: '0.8rem', md: '0.875rem' },
+              display: 'block',
+              overflowX: 'auto',
+            },
+            '& th, & td': {
+              border: `1px solid ${isUser ? 'rgba(255,255,255,0.3)' : colors.border}`,
+              px: { xs: 1, sm: 1.5 },
+              py: { xs: 0.5, sm: 0.75 },
+              textAlign: 'left',
+              whiteSpace: 'nowrap',
+            },
+            '& th': {
+              bgcolor: isUser ? 'rgba(255,255,255,0.1)' : `${colors.primary}15`,
+              fontWeight: 600,
+              color: isUser ? colors.white : colors.dark,
+            },
+            '& tr:nth-of-type(even)': {
+              bgcolor: isUser ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.02)',
+            },
+            '& tr:hover': {
+              bgcolor: isUser ? 'rgba(255,255,255,0.1)' : `${colors.primary}08`,
+            },
           }}
         >
-          {message.content}
+          {isUser ? (
+            <Typography sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+              {message.content}
+            </Typography>
+          ) : (
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              {message.content}
+            </ReactMarkdown>
+          )}
           {isStreaming && isAssistant && (
             <Box
               component="span"
@@ -184,7 +228,7 @@ export const MessageBubble = memo(function MessageBubble({
               }}
             />
           )}
-        </Typography>
+        </Box>
 
         {/* Tool calls */}
         {message.tool_calls?.calls?.map((toolCall, index) => (
