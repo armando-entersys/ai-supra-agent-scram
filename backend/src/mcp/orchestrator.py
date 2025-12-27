@@ -245,6 +245,15 @@ Formato de respuesta:
             # Process response chunks
             for chunk in response:
                 chunk_count += 1
+                # Debug: log chunk structure
+                has_candidates = bool(chunk.candidates)
+                has_parts = has_candidates and bool(chunk.candidates[0].content.parts) if has_candidates else False
+                if chunk_count <= 3:  # Only log first few chunks
+                    logger.info("Processing chunk",
+                        chunk_num=chunk_count,
+                        has_candidates=has_candidates,
+                        has_parts=has_parts
+                    )
                 # Check for function calls
                 if chunk.candidates and chunk.candidates[0].content.parts:
                     for part in chunk.candidates[0].content.parts:
