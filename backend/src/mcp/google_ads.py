@@ -493,10 +493,7 @@ class GoogleAdsTool:
                 metrics.conversions_value,
                 metrics.ctr,
                 metrics.average_cpc,
-                metrics.cost_per_conversion,
-                metrics.interaction_rate,
-                metrics.video_views,
-                metrics.video_view_rate
+                metrics.cost_per_conversion
             FROM campaign
             WHERE campaign.id = {campaign_id}
                 AND segments.date DURING {date_range}
