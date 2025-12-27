@@ -179,6 +179,29 @@ class GoogleAdsTool:
                     },
                     "required": []
                 }
+            },
+            {
+                "name": "google_ads_search_terms",
+                "description": "Get search terms report - the actual search queries people typed that triggered your ads. Use this to discover what users are searching for.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "campaign_id": {
+                            "type": "string",
+                            "description": "Campaign ID (required)"
+                        },
+                        "date_range": {
+                            "type": "string",
+                            "enum": ["LAST_7_DAYS", "LAST_14_DAYS", "LAST_30_DAYS", "THIS_MONTH", "LAST_MONTH"],
+                            "description": "Date range for metrics (default: LAST_30_DAYS)"
+                        },
+                        "customer_id": {
+                            "type": "string",
+                            "description": "Google Ads customer ID (optional)"
+                        }
+                    },
+                    "required": ["campaign_id"]
+                }
             }
         ]
 
@@ -222,6 +245,8 @@ class GoogleAdsTool:
                 return await self._list_accessible_customers(parameters)
             elif tool_name == "google_ads_keyword_performance":
                 return await self._keyword_performance(parameters)
+            elif tool_name == "google_ads_search_terms":
+                return await self._search_terms(parameters)
             else:
                 return {"error": f"Unknown tool: {tool_name}"}
         except GoogleAdsException as ex:
@@ -696,6 +721,60 @@ class GoogleAdsTool:
             "date_range": date_range,
             "keyword_count": len(keywords),
             "keywords": keywords
+        }
+
+    async def _search_terms(self, parameters: dict[str, Any]) -> dict[str, Any]:
+        """Get search terms report - actual queries that triggered ads."""
+        campaign_id = parameters.get("campaign_id")
+        customer_id = self._get_customer_id(parameters)
+        date_range = parameters.get("date_range", "LAST_30_DAYS")
+
+        if not customer_id:
+            return {"error": "Customer ID is required"}
+        if not campaign_id:
+            return {"error": "Campaign ID is required"}
+
+        query = f"""
+            SELECT
+                search_term_view.search_term,
+                campaign.name,
+                ad_group.name,
+                metrics.impressions,
+                metrics.clicks,
+                metrics.cost_micros,
+                metrics.conversions,
+                metrics.ctr
+            FROM search_term_view
+            WHERE campaign.id = {campaign_id}
+                AND segments.date DURING {date_range}
+            ORDER BY metrics.impressions DESC
+            LIMIT 100
+        """
+
+        logger.info("Getting search terms", campaign_id=campaign_id, customer_id=customer_id)
+
+        ga_service = self.client.get_service("GoogleAdsService")
+        response = ga_service.search(customer_id=customer_id, query=query)
+
+        search_terms = []
+        for row in response:
+            search_terms.append({
+                "search_term": row.search_term_view.search_term,
+                "campaign": row.campaign.name,
+                "ad_group": row.ad_group.name,
+                "impressions": row.metrics.impressions,
+                "clicks": row.metrics.clicks,
+                "cost": round(row.metrics.cost_micros / 1_000_000, 2),
+                "conversions": row.metrics.conversions,
+                "ctr": round(row.metrics.ctr * 100, 2),
+            })
+
+        return {
+            "success": True,
+            "campaign_id": campaign_id,
+            "date_range": date_range,
+            "search_term_count": len(search_terms),
+            "search_terms": search_terms
         }
 
 

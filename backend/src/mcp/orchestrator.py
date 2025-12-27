@@ -245,35 +245,10 @@ Formato de respuesta:
             # Process response chunks
             for chunk in response:
                 chunk_count += 1
-                # Debug: log chunk structure
-                has_candidates = bool(chunk.candidates)
-                has_parts = has_candidates and bool(chunk.candidates[0].content.parts) if has_candidates else False
-                if chunk_count <= 3:  # Only log first few chunks
-                    logger.info("Processing chunk",
-                        chunk_num=chunk_count,
-                        has_candidates=has_candidates,
-                        has_parts=has_parts
-                    )
                 # Check for function calls
                 if chunk.candidates and chunk.candidates[0].content.parts:
                     for part in chunk.candidates[0].content.parts:
-                        # Log part details for debugging
-                        has_fc_attr = hasattr(part, "function_call")
-                        fc_value = getattr(part, "function_call", None)
-                        has_text_attr = hasattr(part, "text")
-                        text_value = getattr(part, "text", None)
-
-                        if chunk_count <= 3:
-                            logger.info("Processing part",
-                                chunk_num=chunk_count,
-                                has_fc_attr=has_fc_attr,
-                                fc_truthy=bool(fc_value) if fc_value else False,
-                                fc_name=fc_value.name if fc_value and hasattr(fc_value, 'name') else None,
-                                has_text_attr=has_text_attr,
-                                text_preview=text_value[:50] if text_value else None
-                            )
-
-                        if has_fc_attr and fc_value:
+                        if hasattr(part, "function_call") and part.function_call:
                             fc = part.function_call
                             tool_name = fc.name
                             tool_args = dict(fc.args) if fc.args else {}
