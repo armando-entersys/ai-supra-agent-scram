@@ -3,11 +3,11 @@
 Provides real-time web search capabilities using Google Custom Search API.
 """
 
-import asyncio
 from typing import Any
 
 import httpx
 import structlog
+from vertexai.generative_models import FunctionDeclaration
 
 from src.config import get_settings
 
@@ -28,46 +28,45 @@ class WebSearchTool:
         else:
             logger.info("WebSearchTool initialized with fallback search")
 
-    def get_function_declarations(self) -> list[dict[str, Any]]:
+    def get_function_declarations(self) -> list[FunctionDeclaration]:
         """Get function declarations for Gemini.
 
         Returns:
-            List of function declaration dictionaries
+            List of FunctionDeclaration objects
         """
         return [
-            {
-                "name": "web_search",
-                "description": """Search the internet for current information, best practices, industry trends, and benchmarks.
+            FunctionDeclaration(
+                name="web_search",
+                description="""Busca en internet información actualizada, mejores prácticas, tendencias de industria y benchmarks.
 
-USE THIS TOOL when:
-- User asks about best practices, optimization tips, or industry standards
-- You need current market trends or benchmarks
-- Looking for external information not in your knowledge base
-- Researching competitors or industry comparisons
-- Finding recent news or updates about a topic
+USA ESTA HERRAMIENTA cuando:
+- El usuario pregunta sobre mejores prácticas, tips de optimización o estándares de industria
+- Necesitas tendencias actuales del mercado o benchmarks
+- Buscas información externa que no está en la base de conocimiento
+- Investigas competidores o comparaciones de industria
+- Buscas noticias recientes o actualizaciones sobre un tema
 
-Examples:
-- "best practices for landing pages in security industry"
-- "google ads optimization tips 2024"
-- "average conversion rate for B2B services"
-- "latest SEO trends"
+Ejemplos:
+- "mejores prácticas para landing pages de seguridad electrónica"
+- "tips de optimización de Google Ads 2024"
+- "tasa de conversión promedio para servicios B2B"
+- "tendencias SEO actuales"
 """,
-                "parameters": {
+                parameters={
                     "type": "object",
                     "properties": {
                         "query": {
                             "type": "string",
-                            "description": "The search query in Spanish or English"
+                            "description": "La consulta de búsqueda en español o inglés"
                         },
                         "num_results": {
                             "type": "integer",
-                            "description": "Number of results to return (default: 5, max: 10)",
-                            "default": 5
+                            "description": "Número de resultados a retornar (default: 5, max: 10)"
                         }
                     },
                     "required": ["query"]
                 }
-            }
+            )
         ]
 
     async def execute(self, tool_name: str, parameters: dict[str, Any]) -> dict[str, Any]:
