@@ -18,13 +18,13 @@ from vertexai.generative_models import (
     Part,
     Tool,
 )
-from vertexai.preview.generative_models import grounding
 
 from src.config import get_settings
 from src.database.connection import async_session_maker
 from src.mcp.google_analytics import GoogleAnalyticsTool
 from src.mcp.google_ads import get_google_ads_tool, GoogleAdsTool
 from src.mcp.knowledge_base import KnowledgeBaseTool
+from src.mcp.web_search import get_web_search_tool, WebSearchTool
 from src.rag.retrieval import get_context_for_query
 
 logger = structlog.get_logger()
@@ -46,6 +46,7 @@ class AgentOrchestrator:
         self.ga_tool = GoogleAnalyticsTool()
         self.kb_tool = KnowledgeBaseTool()
         self.ads_tool = get_google_ads_tool()  # May be None if not configured
+        self.web_tool = get_web_search_tool()  # Web search tool
 
         # Build Gemini tool definitions
         self.tools = self._build_tools()
@@ -185,19 +186,13 @@ Tienes acceso a 4 fuentes de información - **ÚSALAS TODAS** para respuestas co
             ads_functions = self.ads_tool.get_function_declarations()
             function_declarations.extend(ads_functions)
 
-        tools = [Tool(function_declarations=function_declarations)]
+        # Web Search tool (always available)
+        if self.web_tool:
+            web_functions = self.web_tool.get_function_declarations()
+            function_declarations.extend(web_functions)
+            logger.info("Web Search tool enabled")
 
-        # Add Google Search grounding for web searches
-        try:
-            google_search_tool = Tool.from_google_search_retrieval(
-                google_search_retrieval=grounding.GoogleSearchRetrieval()
-            )
-            tools.append(google_search_tool)
-            logger.info("Google Search grounding enabled successfully")
-        except Exception as e:
-            logger.error("Google Search grounding failed to initialize", error=str(e), exc_info=True)
-
-        return tools
+        return [Tool(function_declarations=function_declarations)]
 
     async def _execute_tool(self, tool_name: str, tool_args: dict[str, Any]) -> dict[str, Any]:
         """Execute a tool call and return the result.
@@ -227,6 +222,8 @@ Tienes acceso a 4 fuentes de información - **ÚSALAS TODAS** para respuestas co
                 result = await self.kb_tool.execute(tool_name, tool_args)
             elif tool_name.startswith("google_ads_") and self.ads_tool:
                 result = await self.ads_tool.execute(tool_name, tool_args)
+            elif tool_name == "web_search" and self.web_tool:
+                result = await self.web_tool.execute(tool_name, tool_args)
             else:
                 result = {"error": f"Unknown tool: {tool_name}"}
 

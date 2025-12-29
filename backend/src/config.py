@@ -68,6 +68,18 @@ class Settings(BaseSettings):
     ]
 
     # ─────────────────────────────────────────────────────────────
+    # Google Custom Search (for web search)
+    # ─────────────────────────────────────────────────────────────
+    google_search_api_key: Annotated[
+        str | None,
+        Field(default=None, description="Google Custom Search API key"),
+    ]
+    google_search_engine_id: Annotated[
+        str | None,
+        Field(default=None, description="Google Custom Search Engine ID (cx)"),
+    ]
+
+    # ─────────────────────────────────────────────────────────────
     # Google Ads
     # ─────────────────────────────────────────────────────────────
     google_ads_customer_id: Annotated[
