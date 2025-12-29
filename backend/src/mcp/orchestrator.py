@@ -17,8 +17,8 @@ from vertexai.generative_models import (
     GenerativeModel,
     Part,
     Tool,
-    grounding,
 )
+from vertexai.preview.generative_models import grounding
 
 from src.config import get_settings
 from src.database.connection import async_session_maker
@@ -190,17 +190,12 @@ Tienes acceso a 4 fuentes de información - **ÚSALAS TODAS** para respuestas co
         # Add Google Search grounding for web searches
         try:
             google_search_tool = Tool.from_google_search_retrieval(
-                google_search_retrieval=grounding.GoogleSearchRetrieval(
-                    dynamic_retrieval_config=grounding.DynamicRetrievalConfig(
-                        mode=grounding.DynamicRetrievalConfig.Mode.MODE_DYNAMIC,
-                        dynamic_threshold=0.5,
-                    )
-                )
+                google_search_retrieval=grounding.GoogleSearchRetrieval()
             )
             tools.append(google_search_tool)
-            logger.info("Google Search grounding enabled")
+            logger.info("Google Search grounding enabled successfully")
         except Exception as e:
-            logger.warning("Google Search grounding not available", error=str(e))
+            logger.error("Google Search grounding failed to initialize", error=str(e), exc_info=True)
 
         return tools
 
