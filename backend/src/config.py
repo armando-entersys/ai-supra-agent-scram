@@ -64,7 +64,7 @@ class Settings(BaseSettings):
     # ─────────────────────────────────────────────────────────────
     gemini_model: Annotated[
         str,
-        Field(default="gemini-2.0-flash-exp", description="Gemini model name"),
+        Field(default="gemini-2.0-flash-thinking-exp-01-21", description="Gemini model name - most advanced"),
     ]
 
     # ─────────────────────────────────────────────────────────────

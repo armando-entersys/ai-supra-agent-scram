@@ -17,6 +17,7 @@ from vertexai.generative_models import (
     GenerativeModel,
     Part,
     Tool,
+    grounding,
 )
 
 from src.config import get_settings
@@ -92,13 +93,36 @@ Cuando el usuario mencione cualquiera de estos términos, AUTOMÁTICAMENTE asoci
 ### ❌ NUNCA HAGAS ESTO:
 1. **NUNCA pidas IDs** - Ni property_id, ni customer_id, ni campaign_id. SIEMPRE resuélvelos tú.
 2. **NUNCA pidas confirmación** para ejecutar herramientas - solo hazlo.
-3. **NUNCA digas "no tengo acceso"** - tienes acceso a todo, usa las herramientas.
+3. **NUNCA digas "no tengo acceso"** o "no encontré información" - tienes múltiples fuentes, úsalas TODAS.
 
 ### ✅ SIEMPRE HAZ ESTO:
 1. **Ejecuta herramientas INMEDIATAMENTE** sin preguntar.
 2. **Para Google Ads**: SIEMPRE ejecuta `google_ads_list_campaigns` PRIMERO para obtener IDs.
 3. **Matching inteligente**: Si el usuario dice "seguridad", busca campañas con nombres similares (Seguridad, Security, CCTV, etc.)
 4. **Combina datos**: Cuando analices una campaña, cruza con Analytics de la landing correspondiente.
+5. **USA TODAS LAS FUENTES** para dar respuestas completas y accionables.
+
+---
+## FUENTES DE DATOS (USA TODAS EN PARALELO)
+
+Tienes acceso a 4 fuentes de información - **ÚSALAS TODAS** para respuestas completas:
+
+1. **Google Analytics (GA4)** - Datos de tráfico, conversiones, comportamiento de usuarios
+2. **Google Ads** - Campañas, keywords, términos de búsqueda, costos, rendimiento
+3. **Knowledge Base (RAG)** - Documentos y conocimiento específico del negocio SCRAM
+4. **Google Search (Grounding)** - Tendencias de industria, mejores prácticas, benchmarks actuales
+
+### Cuándo usar cada fuente:
+- **Preguntas sobre métricas/rendimiento**: GA4 + Google Ads + tu análisis experto
+- **Preguntas sobre mejoras/optimización**: Datos reales + Google Search (mejores prácticas) + Knowledge Base
+- **Preguntas sobre el negocio SCRAM**: Knowledge Base + GA4/Ads para contexto
+- **Preguntas sobre tendencias/industria**: Google Search + tu conocimiento de marketing
+
+**Google Search grounding** te permite buscar en tiempo real:
+- Mejores prácticas de landing pages para seguridad electrónica
+- Benchmarks de conversión en servicios B2B
+- Tendencias de marketing digital 2024-2025
+- Estrategias de Google Ads para servicios tecnológicos
 
 ---
 ## FLUJO DE TRABAJO AUTOMÁTICO
@@ -161,7 +185,24 @@ Cuando el usuario mencione cualquiera de estos términos, AUTOMÁTICAMENTE asoci
             ads_functions = self.ads_tool.get_function_declarations()
             function_declarations.extend(ads_functions)
 
-        return [Tool(function_declarations=function_declarations)]
+        tools = [Tool(function_declarations=function_declarations)]
+
+        # Add Google Search grounding for web searches
+        try:
+            google_search_tool = Tool.from_google_search_retrieval(
+                google_search_retrieval=grounding.GoogleSearchRetrieval(
+                    dynamic_retrieval_config=grounding.DynamicRetrievalConfig(
+                        mode=grounding.DynamicRetrievalConfig.Mode.MODE_DYNAMIC,
+                        dynamic_threshold=0.5,
+                    )
+                )
+            )
+            tools.append(google_search_tool)
+            logger.info("Google Search grounding enabled")
+        except Exception as e:
+            logger.warning("Google Search grounding not available", error=str(e))
+
+        return tools
 
     async def _execute_tool(self, tool_name: str, tool_args: dict[str, Any]) -> dict[str, Any]:
         """Execute a tool call and return the result.
