@@ -89,14 +89,21 @@ class AdsTooBigQueryExporter:
 
     def _ensure_dataset(self) -> None:
         """Ensure BigQuery dataset exists."""
+        from google.api_core.exceptions import NotFound, Conflict
+
         dataset_ref = f"{self.project_id}.{self.dataset_id}"
         try:
             self.bq_client.get_dataset(dataset_ref)
-        except Exception:
-            dataset = bigquery.Dataset(dataset_ref)
-            dataset.location = "US"
-            self.bq_client.create_dataset(dataset)
-            logger.info("Created BigQuery dataset", dataset=dataset_ref)
+            logger.info("BigQuery dataset exists", dataset=dataset_ref)
+        except NotFound:
+            try:
+                dataset = bigquery.Dataset(dataset_ref)
+                dataset.location = "US"
+                self.bq_client.create_dataset(dataset)
+                logger.info("Created BigQuery dataset", dataset=dataset_ref)
+            except Conflict:
+                # Dataset was created by another process
+                logger.info("BigQuery dataset already exists", dataset=dataset_ref)
 
     async def export_campaign_performance(self, days_back: int = 30) -> dict[str, Any]:
         """Export campaign performance data to BigQuery.
