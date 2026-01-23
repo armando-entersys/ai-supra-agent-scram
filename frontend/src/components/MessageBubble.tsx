@@ -5,78 +5,25 @@
  */
 
 import { memo } from 'react';
-import { Box, Typography, Paper, Chip, CircularProgress, useMediaQuery, useTheme } from '@mui/material';
+import { Box, Typography, Paper } from '@mui/material';
 import {
   SmartToy as BotIcon,
   Person as UserIcon,
-  Check as CheckIcon,
 } from '@mui/icons-material';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { colors } from '@/theme';
-import type { ChatMessage, ToolCall } from '@/types';
+import type { ChatMessage } from '@/types';
 
 interface MessageBubbleProps {
   message: ChatMessage;
   isStreaming?: boolean;
 }
 
-function ToolCallIndicator({ toolCall, isMobile }: { toolCall: ToolCall; isMobile: boolean }) {
-  const isRunning = toolCall.status === 'running' || toolCall.status === 'pending';
-
-  return (
-    <Box
-      sx={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: { xs: 0.75, sm: 1 },
-        mt: 1,
-        p: { xs: 1, sm: 1.5 },
-        bgcolor: 'rgba(255, 153, 0, 0.08)',
-        borderRadius: 1.5,
-        border: `1px solid ${colors.primary}20`,
-      }}
-    >
-      {isRunning ? (
-        <CircularProgress size={isMobile ? 14 : 16} sx={{ color: colors.primary }} />
-      ) : (
-        <CheckIcon sx={{ fontSize: isMobile ? 14 : 16, color: colors.success }} />
-      )}
-      <Typography
-        variant="caption"
-        sx={{
-          fontWeight: 500,
-          color: colors.dark,
-          fontSize: { xs: '0.7rem', sm: '0.75rem' },
-        }}
-      >
-        {isRunning ? 'Ejecutando' : 'Completado'}:
-      </Typography>
-      <Chip
-        label={toolCall.tool_name}
-        size="small"
-        sx={{
-          bgcolor: isRunning ? colors.primary : colors.success,
-          color: colors.white,
-          fontWeight: 600,
-          fontSize: { xs: '0.65rem', sm: '0.7rem' },
-          height: { xs: 20, sm: 22 },
-          '& .MuiChip-label': {
-            px: { xs: 1, sm: 1.5 },
-          },
-        }}
-      />
-    </Box>
-  );
-}
-
 export const MessageBubble = memo(function MessageBubble({
   message,
   isStreaming = false,
 }: MessageBubbleProps) {
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
-
   const isUser = message.role === 'user';
   const isAssistant = message.role === 'assistant';
 
@@ -230,10 +177,7 @@ export const MessageBubble = memo(function MessageBubble({
           )}
         </Box>
 
-        {/* Tool calls */}
-        {message.tool_calls?.calls?.map((toolCall, index) => (
-          <ToolCallIndicator key={index} toolCall={toolCall} isMobile={isMobile} />
-        ))}
+        {/* Tool calls - hidden for cleaner UX */}
       </Paper>
     </Box>
   );
