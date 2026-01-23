@@ -52,7 +52,7 @@ class Settings(BaseSettings):
     # ─────────────────────────────────────────────────────────────
     vertex_ai_location: Annotated[
         str,
-        Field(default="us-central1", description="Vertex AI region"),
+        Field(default="global", description="Vertex AI region - global for Gemini 3"),
     ]
     embedding_model: Annotated[
         str,
@@ -64,7 +64,7 @@ class Settings(BaseSettings):
     # ─────────────────────────────────────────────────────────────
     gemini_model: Annotated[
         str,
-        Field(default="gemini-1.5-pro-002", description="Gemini model - stable with grounding support"),
+        Field(default="gemini-3-pro-preview", description="Gemini 3 Pro - most advanced reasoning model"),
     ]
 
     # ─────────────────────────────────────────────────────────────
@@ -104,7 +104,11 @@ class Settings(BaseSettings):
     ]
     google_ads_login_customer_id: Annotated[
         str | None,
-        Field(default=None, description="Google Ads MCC login customer ID"),
+        Field(default=None, description="Google Ads MCC login customer ID (optional)"),
+    ]
+    google_ads_client_accounts: Annotated[
+        str | None,
+        Field(default=None, description="Comma-separated list of Google Ads client account IDs to export"),
     ]
     google_ads_config_path: Annotated[
         str | None,
@@ -155,6 +159,13 @@ class Settings(BaseSettings):
     def is_production(self) -> bool:
         """Check if running in production environment."""
         return self.environment.lower() == "production"
+
+    @property
+    def ads_client_account_list(self) -> list[str]:
+        """Parse Google Ads client accounts into a list."""
+        if not self.google_ads_client_accounts:
+            return []
+        return [acc.strip() for acc in self.google_ads_client_accounts.split(",") if acc.strip()]
 
 
 @lru_cache

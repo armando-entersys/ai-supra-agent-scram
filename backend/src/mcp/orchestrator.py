@@ -25,6 +25,7 @@ from src.mcp.google_analytics import GoogleAnalyticsTool
 from src.mcp.google_ads import get_google_ads_tool, GoogleAdsTool
 from src.mcp.knowledge_base import KnowledgeBaseTool
 from src.mcp.web_search import get_web_search_tool, WebSearchTool
+from src.mcp.bigquery import get_bigquery_tool, BigQueryTool
 from src.rag.retrieval import get_context_for_query
 
 logger = structlog.get_logger()
@@ -47,6 +48,7 @@ class AgentOrchestrator:
         self.kb_tool = KnowledgeBaseTool()
         self.ads_tool = get_google_ads_tool()  # May be None if not configured
         self.web_tool = get_web_search_tool()  # Web search tool
+        self.bq_tool = get_bigquery_tool()  # BigQuery for advanced analytics
 
         # Build Gemini tool definitions
         self.tools = self._build_tools()
@@ -106,18 +108,26 @@ Cuando el usuario mencione cualquiera de estos términos, AUTOMÁTICAMENTE asoci
 ---
 ## FUENTES DE DATOS (USA TODAS EN PARALELO)
 
-Tienes acceso a 4 fuentes de información - **ÚSALAS TODAS** para respuestas completas:
+Tienes acceso a 5 fuentes de información - **ÚSALAS TODAS** para respuestas completas:
 
 1. **Google Analytics (GA4)** - Datos de tráfico, conversiones, comportamiento de usuarios
 2. **Google Ads** - Campañas, keywords, términos de búsqueda, costos, rendimiento
-3. **Knowledge Base (RAG)** - Documentos y conocimiento específico del negocio SCRAM
-4. **Google Search (Grounding)** - Tendencias de industria, mejores prácticas, benchmarks actuales
+3. **BigQuery** - Análisis SQL avanzado de datos exportados de GA4 y Google Ads (más granular)
+4. **Knowledge Base (RAG)** - Documentos y conocimiento específico del negocio SCRAM
+5. **Google Search (Grounding)** - Tendencias de industria, mejores prácticas, benchmarks actuales
 
 ### Cuándo usar cada fuente:
 - **Preguntas sobre métricas/rendimiento**: GA4 + Google Ads + tu análisis experto
+- **Análisis profundo/SQL personalizado**: BigQuery (eventos granulares, joins complejos, cohortes)
 - **Preguntas sobre mejoras/optimización**: Datos reales + Google Search (mejores prácticas) + Knowledge Base
 - **Preguntas sobre el negocio SCRAM**: Knowledge Base + GA4/Ads para contexto
 - **Preguntas sobre tendencias/industria**: Google Search + tu conocimiento de marketing
+
+### BigQuery - Análisis Avanzado:
+Usa `bq_list_datasets` para ver qué datos tienes (analytics_*, google_ads_*). Luego:
+- **Eventos GA4 granulares**: `bq_ga4_events_summary` o queries SQL directos
+- **Análisis de cohortes**: SQL personalizado con `bq_run_query`
+- **Cruce GA4 + Ads**: Une eventos con costos para calcular CPA real por evento
 
 **Google Search grounding** te permite buscar en tiempo real:
 - Mejores prácticas de landing pages para seguridad electrónica
@@ -192,6 +202,12 @@ Tienes acceso a 4 fuentes de información - **ÚSALAS TODAS** para respuestas co
             function_declarations.extend(web_functions)
             logger.info("Web Search tool enabled")
 
+        # BigQuery tool for advanced analytics
+        if self.bq_tool:
+            bq_functions = self.bq_tool.get_function_declarations()
+            function_declarations.extend(bq_functions)
+            logger.info("BigQuery tool enabled")
+
         return [Tool(function_declarations=function_declarations)]
 
     async def _execute_tool(self, tool_name: str, tool_args: dict[str, Any]) -> dict[str, Any]:
@@ -224,6 +240,8 @@ Tienes acceso a 4 fuentes de información - **ÚSALAS TODAS** para respuestas co
                 result = await self.ads_tool.execute(tool_name, tool_args)
             elif tool_name == "web_search" and self.web_tool:
                 result = await self.web_tool.execute(tool_name, tool_args)
+            elif tool_name.startswith("bq_") and self.bq_tool:
+                result = await self.bq_tool.execute(tool_name, tool_args)
             else:
                 result = {"error": f"Unknown tool: {tool_name}"}
 
