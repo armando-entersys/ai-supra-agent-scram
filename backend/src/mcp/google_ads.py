@@ -25,6 +25,10 @@ class GoogleAdsTool:
         """Initialize the Google Ads client."""
         self._client = None
         self._customer_id = settings.google_ads_customer_id
+        # Prefer configured client accounts over MCC discovery
+        self._client_accounts = settings.ads_client_account_list or []
+        if self._client_accounts:
+            logger.info("Using configured client accounts", accounts=self._client_accounts)
 
     @property
     def client(self) -> GoogleAdsClient:
@@ -398,15 +402,11 @@ class GoogleAdsTool:
     async def _list_campaigns(self, parameters: dict[str, Any]) -> dict[str, Any]:
         """List all campaigns with metrics.
 
-        Automatically handles MCC accounts by querying all client accounts.
+        Uses configured client accounts if available, otherwise discovers them.
         """
-        customer_id = self._get_customer_id(parameters)
         status_filter = parameters.get("status_filter", "ALL")
 
-        if not customer_id:
-            return {"error": "Customer ID is required"}
-
-        logger.info("Listing campaigns", customer_id=customer_id, status_filter=status_filter)
+        logger.info("Listing campaigns", status_filter=status_filter)
 
         try:
             ga_service = self.client.get_service("GoogleAdsService")
@@ -414,45 +414,55 @@ class GoogleAdsTool:
             logger.error("Failed to get GoogleAdsService", error=str(e))
             return {"error": f"Failed to initialize Google Ads service: {str(e)}"}
 
-        # First, try to get campaigns directly
-        try:
-            logger.info("Attempting direct campaign query", customer_id=customer_id)
-            campaigns = await self._list_campaigns_for_customer(
-                customer_id, status_filter, ga_service
-            )
-            logger.info("Direct query successful", campaign_count=len(campaigns))
-            return {
-                "success": True,
-                "customer_id": customer_id,
-                "campaign_count": len(campaigns),
-                "campaigns": campaigns
-            }
-        except GoogleAdsException as ex:
-            # Check if this is because it's a manager account
-            error_messages = []
-            is_manager_error = False
-            for error in ex.failure.errors:
-                error_str = str(error.error_code)
-                error_messages.append(f"{error_str}: {error.message}")
-                if "CUSTOMER_NOT_ENABLED" in error_str or "manager" in error.message.lower():
-                    is_manager_error = True
+        # Use configured client accounts if available (preferred method)
+        if self._client_accounts:
+            logger.info("Using configured client accounts", accounts=self._client_accounts)
+            client_accounts = self._client_accounts
+        else:
+            # Fallback: try direct query or discover accounts
+            customer_id = self._get_customer_id(parameters)
+            if not customer_id:
+                return {"error": "Customer ID is required"}
 
-            logger.info("Direct query failed", errors=error_messages, is_manager=is_manager_error)
+            # Try direct query first (for non-MCC accounts)
+            try:
+                logger.info("Attempting direct campaign query", customer_id=customer_id)
+                campaigns = await self._list_campaigns_for_customer(
+                    customer_id, status_filter, ga_service
+                )
+                logger.info("Direct query successful", campaign_count=len(campaigns))
+                return {
+                    "success": True,
+                    "customer_id": customer_id,
+                    "campaign_count": len(campaigns),
+                    "campaigns": campaigns
+                }
+            except GoogleAdsException as ex:
+                # Check if this is because it's a manager account
+                error_messages = []
+                is_manager_error = False
+                for error in ex.failure.errors:
+                    error_str = str(error.error_code)
+                    error_messages.append(f"{error_str}: {error.message}")
+                    if "CUSTOMER_NOT_ENABLED" in error_str or "manager" in error.message.lower():
+                        is_manager_error = True
 
-            if not is_manager_error:
-                return {"error": "Google Ads API error", "details": error_messages}
+                logger.info("Direct query failed", errors=error_messages, is_manager=is_manager_error)
 
-            logger.info("Detected MCC account, querying client accounts", customer_id=customer_id)
-        except Exception as e:
-            logger.error("Unexpected error in direct campaign query", error=str(e), exc_info=True)
-            return {"error": f"Failed to query campaigns: {str(e)}"}
+                if not is_manager_error:
+                    return {"error": "Google Ads API error", "details": error_messages}
 
-        # If we're here, it's an MCC account - get campaigns from all client accounts
-        try:
-            client_accounts = await self._get_client_accounts()
-        except Exception as e:
-            logger.error("Failed to get client accounts", error=str(e))
-            return {"error": f"Failed to get client accounts: {str(e)}"}
+                logger.info("Detected MCC account, discovering client accounts", customer_id=customer_id)
+            except Exception as e:
+                logger.error("Unexpected error in direct campaign query", error=str(e), exc_info=True)
+                return {"error": f"Failed to query campaigns: {str(e)}"}
+
+            # Discover client accounts for MCC
+            try:
+                client_accounts = await self._get_client_accounts()
+            except Exception as e:
+                logger.error("Failed to get client accounts", error=str(e))
+                return {"error": f"Failed to get client accounts: {str(e)}"}
 
         if not client_accounts:
             return {
