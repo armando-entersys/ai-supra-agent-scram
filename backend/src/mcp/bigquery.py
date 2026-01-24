@@ -161,12 +161,15 @@ class BigQueryTool:
             ),
             FunctionDeclaration(
                 name="bq_export_google_ads",
-                description="""Exporta datos de Google Ads a BigQuery.
-                Usa esto para sincronizar los datos más recientes de campañas, keywords y términos de búsqueda.
-                Los datos se guardan en el dataset google_ads_data con tablas:
+                description="""Exporta TODOS los datos de Google Ads a BigQuery.
+                Sincroniza datos completos incluyendo:
                 - campaign_performance: Rendimiento por campaña
                 - keyword_performance: Rendimiento por keyword
-                - search_terms: Términos de búsqueda reales""",
+                - search_terms: Términos de búsqueda reales
+                - ad_group_performance: Rendimiento por grupo de anuncios
+                - device_performance: Rendimiento por dispositivo (móvil, desktop, tablet)
+                - geographic_performance: Rendimiento por ubicación geográfica
+                - hourly_performance: Rendimiento por hora del día y día de la semana""",
                 parameters={
                     "type": "object",
                     "properties": {
@@ -175,6 +178,28 @@ class BigQueryTool:
                             "description": "Días de historial a exportar (default: 30)",
                         },
                     },
+                },
+            ),
+            FunctionDeclaration(
+                name="bq_upload_prospects",
+                description="""Sube datos de prospectos/clientes desde archivos CSV a BigQuery.
+                Crea el dataset prospects_data con tablas optimizadas para análisis de marketing.
+                Tipos de archivos soportados:
+                - industrial_clients: Prospectos industriales (USA, Canadá, México)
+                - contractors: Contratistas y terceros""",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "file_type": {
+                            "type": "string",
+                            "description": "Tipo de archivo: 'industrial_clients' o 'contractors'",
+                        },
+                        "file_path": {
+                            "type": "string",
+                            "description": "Ruta al archivo CSV",
+                        },
+                    },
+                    "required": ["file_type", "file_path"],
                 },
             ),
         ]
@@ -221,6 +246,11 @@ class BigQueryTool:
             elif tool_name == "bq_export_google_ads":
                 return await self._export_google_ads(
                     tool_args.get("days_back", 30),
+                )
+            elif tool_name == "bq_upload_prospects":
+                return await self._upload_prospects(
+                    tool_args.get("file_type", ""),
+                    tool_args.get("file_path", ""),
                 )
             else:
                 return f"Error: Unknown BigQuery tool: {tool_name}"
@@ -418,6 +448,60 @@ class BigQueryTool:
         except Exception as e:
             logger.error("Google Ads export error", error=str(e))
             return f"Error exportando datos de Google Ads: {str(e)}"
+
+    async def _upload_prospects(self, file_type: str, file_path: str) -> str:
+        """Upload prospect CSV data to BigQuery.
+
+        Args:
+            file_type: Type of file ('industrial_clients' or 'contractors')
+            file_path: Path to the CSV file
+
+        Returns:
+            Upload result summary
+        """
+        try:
+            from src.mcp.csv_to_bigquery import get_csv_uploader
+
+            uploader = get_csv_uploader()
+            if not uploader:
+                return "Error: CSV uploader not initialized. Verifica la configuración de BigQuery."
+
+            if file_type == "industrial_clients":
+                result = await uploader.upload_industrial_clients(file_path)
+            elif file_type == "contractors":
+                result = await uploader.upload_contractors(file_path)
+            else:
+                return f"Error: Tipo de archivo no soportado: {file_type}. Usa 'industrial_clients' o 'contractors'."
+
+            if result.get("success"):
+                output = [
+                    f"✅ **Carga de prospectos completada**\n",
+                    f"📊 **Tabla:** `{result.get('table')}`",
+                    f"📝 **Filas cargadas:** {result.get('rows_uploaded', 0)}",
+                    f"📈 **Total en tabla:** {result.get('total_rows', 0)}\n",
+                ]
+
+                # Add segment breakdown if available
+                segments = result.get("segments", [])
+                if segments:
+                    output.append("**Distribución por segmento:**")
+                    for seg in segments[:10]:
+                        output.append(f"- {seg.get('segment', 'N/A')}: {seg.get('count', 0)}")
+
+                # Add country breakdown if available
+                countries = result.get("countries", [])
+                if countries:
+                    output.append("\n**Distribución por país:**")
+                    for country in countries[:10]:
+                        output.append(f"- {country.get('country', 'N/A')}: {country.get('count', 0)}")
+
+                return "\n".join(output)
+            else:
+                return f"❌ Error en carga: {result.get('error', 'Unknown error')}"
+
+        except Exception as e:
+            logger.error("CSV upload error", error=str(e))
+            return f"Error subiendo datos CSV: {str(e)}"
 
 
 def get_bigquery_tool() -> BigQueryTool | None:

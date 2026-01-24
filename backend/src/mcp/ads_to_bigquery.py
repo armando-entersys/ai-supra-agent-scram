@@ -346,6 +346,225 @@ class AdsTooBigQueryExporter:
             logger.error("Export error", error=str(e))
             return {"success": False, "error": str(e)}
 
+    async def export_ad_group_performance(self, days_back: int = 30) -> dict[str, Any]:
+        """Export ad group performance data to BigQuery."""
+        try:
+            self._ensure_dataset()
+            end_date = datetime.now().strftime("%Y-%m-%d")
+            start_date = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%d")
+
+            ga_service = self.ads_client.get_service("GoogleAdsService")
+            query = f"""
+                SELECT
+                    campaign.id,
+                    campaign.name,
+                    ad_group.id,
+                    ad_group.name,
+                    ad_group.status,
+                    ad_group.type,
+                    metrics.impressions,
+                    metrics.clicks,
+                    metrics.cost_micros,
+                    metrics.conversions,
+                    metrics.ctr,
+                    metrics.average_cpc,
+                    segments.date
+                FROM ad_group
+                WHERE segments.date BETWEEN '{start_date}' AND '{end_date}'
+                ORDER BY metrics.impressions DESC
+            """
+
+            rows = []
+            for customer_id in self.client_accounts:
+                try:
+                    response = ga_service.search(customer_id=customer_id, query=query)
+                    for row in response:
+                        rows.append({
+                            "date": row.segments.date,
+                            "customer_id": customer_id,
+                            "campaign_id": str(row.campaign.id),
+                            "campaign_name": row.campaign.name,
+                            "ad_group_id": str(row.ad_group.id),
+                            "ad_group_name": row.ad_group.name,
+                            "ad_group_status": row.ad_group.status.name,
+                            "ad_group_type": row.ad_group.type_.name,
+                            "impressions": row.metrics.impressions,
+                            "clicks": row.metrics.clicks,
+                            "cost": row.metrics.cost_micros / 1_000_000,
+                            "conversions": row.metrics.conversions,
+                            "ctr": row.metrics.ctr,
+                            "avg_cpc": row.metrics.average_cpc / 1_000_000,
+                            "exported_at": datetime.utcnow().isoformat(),
+                        })
+                except GoogleAdsException:
+                    continue
+
+            if rows:
+                table_id = f"{self.project_id}.{self.dataset_id}.ad_group_performance"
+                await self._write_to_bigquery(table_id, rows, self._ad_group_schema())
+
+            return {"success": True, "table": "ad_group_performance", "rows_exported": len(rows)}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    async def export_geographic_performance(self, days_back: int = 30) -> dict[str, Any]:
+        """Export geographic performance data to BigQuery."""
+        try:
+            self._ensure_dataset()
+            end_date = datetime.now().strftime("%Y-%m-%d")
+            start_date = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%d")
+
+            ga_service = self.ads_client.get_service("GoogleAdsService")
+            query = f"""
+                SELECT
+                    campaign.id,
+                    campaign.name,
+                    geographic_view.country_criterion_id,
+                    geographic_view.location_type,
+                    metrics.impressions,
+                    metrics.clicks,
+                    metrics.cost_micros,
+                    metrics.conversions,
+                    segments.date
+                FROM geographic_view
+                WHERE segments.date BETWEEN '{start_date}' AND '{end_date}'
+                ORDER BY metrics.impressions DESC
+                LIMIT 1000
+            """
+
+            rows = []
+            for customer_id in self.client_accounts:
+                try:
+                    response = ga_service.search(customer_id=customer_id, query=query)
+                    for row in response:
+                        rows.append({
+                            "date": row.segments.date,
+                            "customer_id": customer_id,
+                            "campaign_id": str(row.campaign.id),
+                            "campaign_name": row.campaign.name,
+                            "country_id": str(row.geographic_view.country_criterion_id),
+                            "location_type": row.geographic_view.location_type.name,
+                            "impressions": row.metrics.impressions,
+                            "clicks": row.metrics.clicks,
+                            "cost": row.metrics.cost_micros / 1_000_000,
+                            "conversions": row.metrics.conversions,
+                            "exported_at": datetime.utcnow().isoformat(),
+                        })
+                except GoogleAdsException:
+                    continue
+
+            if rows:
+                table_id = f"{self.project_id}.{self.dataset_id}.geographic_performance"
+                await self._write_to_bigquery(table_id, rows, self._geographic_schema())
+
+            return {"success": True, "table": "geographic_performance", "rows_exported": len(rows)}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    async def export_device_performance(self, days_back: int = 30) -> dict[str, Any]:
+        """Export device performance data to BigQuery."""
+        try:
+            self._ensure_dataset()
+            end_date = datetime.now().strftime("%Y-%m-%d")
+            start_date = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%d")
+
+            ga_service = self.ads_client.get_service("GoogleAdsService")
+            query = f"""
+                SELECT
+                    campaign.id,
+                    campaign.name,
+                    segments.device,
+                    metrics.impressions,
+                    metrics.clicks,
+                    metrics.cost_micros,
+                    metrics.conversions,
+                    metrics.ctr,
+                    segments.date
+                FROM campaign
+                WHERE segments.date BETWEEN '{start_date}' AND '{end_date}'
+            """
+
+            rows = []
+            for customer_id in self.client_accounts:
+                try:
+                    response = ga_service.search(customer_id=customer_id, query=query)
+                    for row in response:
+                        rows.append({
+                            "date": row.segments.date,
+                            "customer_id": customer_id,
+                            "campaign_id": str(row.campaign.id),
+                            "campaign_name": row.campaign.name,
+                            "device": row.segments.device.name,
+                            "impressions": row.metrics.impressions,
+                            "clicks": row.metrics.clicks,
+                            "cost": row.metrics.cost_micros / 1_000_000,
+                            "conversions": row.metrics.conversions,
+                            "ctr": row.metrics.ctr,
+                            "exported_at": datetime.utcnow().isoformat(),
+                        })
+                except GoogleAdsException:
+                    continue
+
+            if rows:
+                table_id = f"{self.project_id}.{self.dataset_id}.device_performance"
+                await self._write_to_bigquery(table_id, rows, self._device_schema())
+
+            return {"success": True, "table": "device_performance", "rows_exported": len(rows)}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    async def export_hourly_performance(self, days_back: int = 30) -> dict[str, Any]:
+        """Export hourly performance data to BigQuery."""
+        try:
+            self._ensure_dataset()
+            end_date = datetime.now().strftime("%Y-%m-%d")
+            start_date = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%d")
+
+            ga_service = self.ads_client.get_service("GoogleAdsService")
+            query = f"""
+                SELECT
+                    campaign.id,
+                    campaign.name,
+                    segments.hour,
+                    segments.day_of_week,
+                    metrics.impressions,
+                    metrics.clicks,
+                    metrics.cost_micros,
+                    metrics.conversions,
+                    segments.date
+                FROM campaign
+                WHERE segments.date BETWEEN '{start_date}' AND '{end_date}'
+            """
+
+            rows = []
+            for customer_id in self.client_accounts:
+                try:
+                    response = ga_service.search(customer_id=customer_id, query=query)
+                    for row in response:
+                        rows.append({
+                            "date": row.segments.date,
+                            "customer_id": customer_id,
+                            "campaign_id": str(row.campaign.id),
+                            "campaign_name": row.campaign.name,
+                            "hour": row.segments.hour,
+                            "day_of_week": row.segments.day_of_week.name,
+                            "impressions": row.metrics.impressions,
+                            "clicks": row.metrics.clicks,
+                            "cost": row.metrics.cost_micros / 1_000_000,
+                            "conversions": row.metrics.conversions,
+                            "exported_at": datetime.utcnow().isoformat(),
+                        })
+                except GoogleAdsException:
+                    continue
+
+            if rows:
+                table_id = f"{self.project_id}.{self.dataset_id}.hourly_performance"
+                await self._write_to_bigquery(table_id, rows, self._hourly_schema())
+
+            return {"success": True, "table": "hourly_performance", "rows_exported": len(rows)}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
     async def export_all(self, days_back: int = 30) -> dict[str, Any]:
         """Export all Google Ads data to BigQuery."""
         if not self.client_accounts:
@@ -359,6 +578,10 @@ class AdsTooBigQueryExporter:
             "campaigns": await self.export_campaign_performance(days_back),
             "keywords": await self.export_keyword_performance(days_back),
             "search_terms": await self.export_search_terms(days_back),
+            "ad_groups": await self.export_ad_group_performance(days_back),
+            "geographic": await self.export_geographic_performance(days_back),
+            "devices": await self.export_device_performance(days_back),
+            "hourly": await self.export_hourly_performance(days_back),
         }
 
         total_rows = sum(
@@ -369,6 +592,7 @@ class AdsTooBigQueryExporter:
             "success": any(r.get("success") for r in results.values()),
             "total_rows_exported": total_rows,
             "client_accounts": self.client_accounts,
+            "tables_created": len([r for r in results.values() if r.get("success")]),
             "details": results,
         }
 
@@ -442,6 +666,74 @@ class AdsTooBigQueryExporter:
             bigquery.SchemaField("ad_group_id", "STRING"),
             bigquery.SchemaField("ad_group_name", "STRING"),
             bigquery.SchemaField("search_term", "STRING"),
+            bigquery.SchemaField("impressions", "INTEGER"),
+            bigquery.SchemaField("clicks", "INTEGER"),
+            bigquery.SchemaField("cost", "FLOAT"),
+            bigquery.SchemaField("conversions", "FLOAT"),
+            bigquery.SchemaField("exported_at", "TIMESTAMP"),
+        ]
+
+    def _ad_group_schema(self) -> list[bigquery.SchemaField]:
+        """Schema for ad group performance table."""
+        return [
+            bigquery.SchemaField("date", "DATE"),
+            bigquery.SchemaField("customer_id", "STRING"),
+            bigquery.SchemaField("campaign_id", "STRING"),
+            bigquery.SchemaField("campaign_name", "STRING"),
+            bigquery.SchemaField("ad_group_id", "STRING"),
+            bigquery.SchemaField("ad_group_name", "STRING"),
+            bigquery.SchemaField("ad_group_status", "STRING"),
+            bigquery.SchemaField("ad_group_type", "STRING"),
+            bigquery.SchemaField("impressions", "INTEGER"),
+            bigquery.SchemaField("clicks", "INTEGER"),
+            bigquery.SchemaField("cost", "FLOAT"),
+            bigquery.SchemaField("conversions", "FLOAT"),
+            bigquery.SchemaField("ctr", "FLOAT"),
+            bigquery.SchemaField("avg_cpc", "FLOAT"),
+            bigquery.SchemaField("exported_at", "TIMESTAMP"),
+        ]
+
+    def _geographic_schema(self) -> list[bigquery.SchemaField]:
+        """Schema for geographic performance table."""
+        return [
+            bigquery.SchemaField("date", "DATE"),
+            bigquery.SchemaField("customer_id", "STRING"),
+            bigquery.SchemaField("campaign_id", "STRING"),
+            bigquery.SchemaField("campaign_name", "STRING"),
+            bigquery.SchemaField("country_id", "STRING"),
+            bigquery.SchemaField("location_type", "STRING"),
+            bigquery.SchemaField("impressions", "INTEGER"),
+            bigquery.SchemaField("clicks", "INTEGER"),
+            bigquery.SchemaField("cost", "FLOAT"),
+            bigquery.SchemaField("conversions", "FLOAT"),
+            bigquery.SchemaField("exported_at", "TIMESTAMP"),
+        ]
+
+    def _device_schema(self) -> list[bigquery.SchemaField]:
+        """Schema for device performance table."""
+        return [
+            bigquery.SchemaField("date", "DATE"),
+            bigquery.SchemaField("customer_id", "STRING"),
+            bigquery.SchemaField("campaign_id", "STRING"),
+            bigquery.SchemaField("campaign_name", "STRING"),
+            bigquery.SchemaField("device", "STRING"),
+            bigquery.SchemaField("impressions", "INTEGER"),
+            bigquery.SchemaField("clicks", "INTEGER"),
+            bigquery.SchemaField("cost", "FLOAT"),
+            bigquery.SchemaField("conversions", "FLOAT"),
+            bigquery.SchemaField("ctr", "FLOAT"),
+            bigquery.SchemaField("exported_at", "TIMESTAMP"),
+        ]
+
+    def _hourly_schema(self) -> list[bigquery.SchemaField]:
+        """Schema for hourly performance table."""
+        return [
+            bigquery.SchemaField("date", "DATE"),
+            bigquery.SchemaField("customer_id", "STRING"),
+            bigquery.SchemaField("campaign_id", "STRING"),
+            bigquery.SchemaField("campaign_name", "STRING"),
+            bigquery.SchemaField("hour", "INTEGER"),
+            bigquery.SchemaField("day_of_week", "STRING"),
             bigquery.SchemaField("impressions", "INTEGER"),
             bigquery.SchemaField("clicks", "INTEGER"),
             bigquery.SchemaField("cost", "FLOAT"),
