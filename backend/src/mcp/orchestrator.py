@@ -32,6 +32,118 @@ logger = structlog.get_logger()
 settings = get_settings()
 
 
+def _format_tool_result(tool_name: str, result: Any) -> str:
+    """Format tool result into readable text for display.
+
+    Args:
+        tool_name: Name of the tool that was executed
+        result: The raw result from the tool
+
+    Returns:
+        Human-readable formatted string
+    """
+    if isinstance(result, str):
+        return result
+
+    if not isinstance(result, dict):
+        return str(result)
+
+    # Handle errors
+    if result.get("error"):
+        return f"❌ Error: {result['error']}"
+
+    # Format Google Ads campaigns
+    if tool_name == "google_ads_list_campaigns" and result.get("campaigns"):
+        campaigns = result["campaigns"]
+        lines = [f"📊 **Campañas de Google Ads** ({len(campaigns)} encontradas)\n"]
+
+        for c in campaigns[:10]:
+            status_emoji = "✅" if c.get("status") == "ENABLED" else "⏸️"
+            lines.append(f"### {status_emoji} {c.get('name', 'Sin nombre')}")
+            lines.append(f"- **Impresiones:** {c.get('impressions', 0):,}")
+            lines.append(f"- **Clics:** {c.get('clicks', 0):,}")
+            lines.append(f"- **Costo:** ${c.get('cost', 0):,.2f}")
+            lines.append(f"- **Conversiones:** {c.get('conversions', 0)}")
+            lines.append(f"- **CTR:** {c.get('ctr', 0)}%")
+            lines.append(f"- **CPC Promedio:** ${c.get('avg_cpc', 0):.2f}")
+            lines.append("")
+
+        return "\n".join(lines)
+
+    # Format Google Ads search terms
+    if tool_name == "google_ads_search_terms" and result.get("search_terms"):
+        terms = result["search_terms"]
+        lines = [f"🔍 **Términos de Búsqueda** ({len(terms)} encontrados)\n"]
+        lines.append("| Término | Clics | Costo | Conv |")
+        lines.append("|---------|-------|-------|------|")
+
+        for t in terms[:20]:
+            lines.append(f"| {t.get('search_term', '')[:40]} | {t.get('clicks', 0)} | ${t.get('cost', 0):.2f} | {t.get('conversions', 0)} |")
+
+        return "\n".join(lines)
+
+    # Format Google Ads keywords
+    if tool_name == "google_ads_keyword_performance" and result.get("keywords"):
+        keywords = result["keywords"]
+        lines = [f"🎯 **Keywords** ({len(keywords)} encontrados)\n"]
+        lines.append("| Keyword | Clics | Costo | CTR |")
+        lines.append("|---------|-------|-------|-----|")
+
+        for k in keywords[:15]:
+            lines.append(f"| {k.get('keyword', '')[:30]} | {k.get('clicks', 0)} | ${k.get('cost', 0):.2f} | {k.get('ctr', 0)}% |")
+
+        return "\n".join(lines)
+
+    # Format GA4 reports
+    if tool_name == "run_report" and result.get("rows"):
+        rows = result["rows"]
+        lines = [f"📈 **Reporte GA4** ({len(rows)} filas)\n"]
+
+        if rows:
+            # Get headers from first row
+            headers = list(rows[0].keys())
+            lines.append("| " + " | ".join(headers) + " |")
+            lines.append("| " + " | ".join(["---"] * len(headers)) + " |")
+
+            for row in rows[:20]:
+                values = [str(row.get(h, ""))[:20] for h in headers]
+                lines.append("| " + " | ".join(values) + " |")
+
+        return "\n".join(lines)
+
+    # Format BigQuery results
+    if tool_name == "bq_run_query":
+        return result  # Already formatted as string
+
+    if tool_name == "bq_export_google_ads":
+        return result  # Already formatted as string
+
+    # Format web search results
+    if tool_name == "web_search" and result.get("results"):
+        results = result["results"]
+        lines = ["🌐 **Resultados de búsqueda:**\n"]
+
+        for r in results[:5]:
+            lines.append(f"- **{r.get('title', '')}**")
+            lines.append(f"  {r.get('snippet', '')[:200]}")
+            lines.append("")
+
+        return "\n".join(lines)
+
+    # Generic fallback - format as key-value pairs
+    lines = []
+    for key, value in result.items():
+        if key in ["success", "error"]:
+            continue
+        if isinstance(value, (list, dict)):
+            if isinstance(value, list) and len(value) > 0:
+                lines.append(f"**{key}:** {len(value)} items")
+            continue
+        lines.append(f"**{key}:** {value}")
+
+    return "\n".join(lines) if lines else "Operación completada."
+
+
 class AgentOrchestrator:
     """Orchestrates LLM interactions with MCP tools."""
 
@@ -447,9 +559,11 @@ Usa `bq_list_datasets` para ver qué datos tienes (analytics_*, google_ads_*). L
 
                                 except Exception as follow_up_error:
                                     logger.error("Follow-up generation failed", error=str(follow_up_error), exc_info=True)
+                                    # Use formatted result instead of raw JSON
+                                    formatted_result = _format_tool_result(tool_name, result)
                                     yield {
                                         "type": "text",
-                                        "content": f"El resultado de la herramienta: {json.dumps(result, ensure_ascii=False, indent=2)}"
+                                        "content": formatted_result
                                     }
                                     break
 
