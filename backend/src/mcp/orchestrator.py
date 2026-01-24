@@ -77,10 +77,16 @@ def _format_tool_result(tool_name: str, result: Any) -> str:
         return f"❌ Error: {result['error']}"
 
     # Format Google Ads GAQL search results
-    if tool_name == "google_ads_search" and result.get("results"):
-        results = result["results"]
+    if tool_name == "google_ads_search":
+        results = result.get("results", [])
+        errors = result.get("errors", [])
+
+        # Handle empty results with errors
+        if not results and errors:
+            return f"⚠️ La consulta no retornó resultados. Usa herramientas específicas como `google_ads_list_campaigns` o `google_ads_search_terms`."
+
         if not results:
-            return "No se encontraron resultados para la consulta."
+            return "No se encontraron datos para esta consulta."
 
         lines = [f"📊 **Resultados de Google Ads** ({len(results)} filas)\n"]
 
@@ -99,8 +105,8 @@ def _format_tool_result(tool_name: str, result: Any) -> str:
                 values.append(str(val)[:30])
             lines.append("| " + " | ".join(values) + " |")
 
-        if result.get("errors"):
-            lines.append(f"\n⚠️ Errores en algunas cuentas: {len(result['errors'])}")
+        if errors:
+            lines.append(f"\n⚠️ Errores en algunas cuentas: {len(errors)}")
 
         return "\n".join(lines)
 
@@ -183,17 +189,24 @@ def _format_tool_result(tool_name: str, result: Any) -> str:
         return "\n".join(lines)
 
     # Generic fallback - format as key-value pairs
+    # Skip technical fields that shouldn't be shown to users
+    skip_fields = ["success", "error", "query", "row_count", "errors", "mcc_customer_id",
+                   "accounts_queried", "customer_id", "_customer_id"]
+
     lines = []
     for key, value in result.items():
-        if key in ["success", "error"]:
+        if key in skip_fields:
             continue
         if isinstance(value, (list, dict)):
             if isinstance(value, list) and len(value) > 0:
-                lines.append(f"**{key}:** {len(value)} items")
+                lines.append(f"**{key}:** {len(value)} elementos")
+            continue
+        # Skip empty values
+        if value is None or value == "" or value == 0:
             continue
         lines.append(f"**{key}:** {value}")
 
-    return "\n".join(lines) if lines else "Operación completada."
+    return "\n".join(lines) if lines else "Consulta ejecutada correctamente."
 
 
 class AgentOrchestrator:
@@ -304,17 +317,24 @@ Estructura SIEMPRE tu respuesta así:
 ---
 ## HERRAMIENTAS DISPONIBLES
 
-Tienes acceso a:
-1. **Google Analytics** - Tráfico, conversiones, comportamiento
-2. **Google Ads** - Campañas, keywords, costos, términos de búsqueda
-3. **BigQuery** - Análisis SQL avanzado
-4. **Knowledge Base** - Documentos internos de SCRAM
-5. **Web Search** - Benchmarks y mejores prácticas actuales
+**Google Ads (USAR ESTAS, no GAQL):**
+- `google_ads_list_campaigns` - Lista todas las campañas con métricas
+- `google_ads_search_terms` - Términos de búsqueda reales (requiere campaign_id + customer_id)
+- `google_ads_keyword_performance` - Rendimiento de keywords
+- `google_ads_campaign_performance` - Métricas detalladas de una campaña
 
-**IMPORTANTE:**
+**Google Analytics (GA4):**
+- `run_report` - Reportes personalizados con dimensiones y métricas
+
+**Otros:**
+- `search_knowledge_base` - Documentos internos SCRAM
+- `web_search` - Búsqueda en internet para benchmarks
+
+**REGLAS CRÍTICAS:**
+- NUNCA uses `google_ads_search` con GAQL - las queries fallan. Usa las herramientas específicas.
 - Ejecuta herramientas SIN pedir permiso
-- NUNCA pidas IDs al usuario - resuélvelos tú
-- Usa múltiples fuentes para respuestas completas
+- NUNCA pidas IDs al usuario
+- Siempre usa `google_ads_list_campaigns` PRIMERO para obtener campaign_id y customer_id
 
 ---
 ## REGLAS DE ORO
