@@ -217,14 +217,14 @@ class AgentOrchestrator:
         # Build Gemini tool definitions
         self.tools = self._build_tools()
 
-        # Initialize model
+        # Initialize model with higher token limit for complex analysis
         self.model = GenerativeModel(
             settings.gemini_model,
             tools=self.tools,
             generation_config=GenerationConfig(
                 temperature=0.7,
                 top_p=0.95,
-                max_output_tokens=4096,
+                max_output_tokens=8192,
             ),
         )
 
@@ -596,7 +596,14 @@ Tienes acceso a:
                                         break
 
                                 except Exception as follow_up_error:
-                                    logger.error("Follow-up generation failed", error=str(follow_up_error), exc_info=True)
+                                    logger.error(
+                                        "Follow-up generation failed",
+                                        error=str(follow_up_error),
+                                        error_type=type(follow_up_error).__name__,
+                                        tool_name=tool_name,
+                                        tool_call_count=tool_call_count,
+                                        exc_info=True
+                                    )
                                     # Use formatted result instead of raw JSON
                                     formatted_result = _format_tool_result(tool_name, result)
                                     yield {
