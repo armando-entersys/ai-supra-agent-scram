@@ -277,28 +277,48 @@ class GoogleAdsTool:
         return json.loads(json_format.MessageToJson(row))
 
     async def _search(self, parameters: dict[str, Any]) -> dict[str, Any]:
-        """Execute a GAQL query."""
+        """Execute a GAQL query across all client accounts."""
         query = parameters.get("query")
-        customer_id = self._get_customer_id(parameters)
 
-        if not customer_id:
-            return {"error": "Customer ID is required"}
+        if not query:
+            return {"error": "Query is required"}
 
-        logger.info("Executing GAQL query", customer_id=customer_id, query=query[:100])
+        logger.info("Executing GAQL query", query=query[:100])
 
         ga_service = self.client.get_service("GoogleAdsService")
-        response = ga_service.search(customer_id=customer_id, query=query)
 
-        results = []
-        for row in response:
-            results.append(self._convert_row_to_dict(row))
+        # Use configured client accounts if available
+        if self._client_accounts:
+            customer_ids = self._client_accounts
+        else:
+            customer_id = self._get_customer_id(parameters)
+            if not customer_id:
+                return {"error": "Customer ID is required"}
+            customer_ids = [customer_id]
+
+        all_results = []
+        errors = []
+
+        for cid in customer_ids:
+            try:
+                response = ga_service.search(customer_id=cid, query=query)
+                for row in response:
+                    result = self._convert_row_to_dict(row)
+                    result["_customer_id"] = cid
+                    all_results.append(result)
+            except GoogleAdsException as e:
+                error_msg = e.failure.errors[0].message if e.failure.errors else str(e)
+                errors.append(f"Account {cid}: {error_msg[:100]}")
+                logger.warning("GAQL query failed for account", customer_id=cid, error=error_msg)
+            except Exception as e:
+                errors.append(f"Account {cid}: {str(e)[:100]}")
 
         return {
-            "success": True,
-            "customer_id": customer_id,
+            "success": len(all_results) > 0,
             "query": query,
-            "row_count": len(results),
-            "results": results[:100]  # Limit to 100 rows
+            "row_count": len(all_results),
+            "results": all_results[:100],
+            "errors": errors if errors else None
         }
 
     async def _get_client_accounts(self) -> list[str]:

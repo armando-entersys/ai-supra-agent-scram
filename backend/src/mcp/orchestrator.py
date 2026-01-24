@@ -45,12 +45,55 @@ def _format_tool_result(tool_name: str, result: Any) -> str:
     if isinstance(result, str):
         return result
 
+    # Handle list results
+    if isinstance(result, list):
+        if not result:
+            return "No se encontraron resultados."
+        # Try to format as table if items are dicts
+        if isinstance(result[0], dict):
+            headers = list(result[0].keys())[:6]  # Limit columns
+            lines = ["| " + " | ".join(headers) + " |"]
+            lines.append("| " + " | ".join(["---"] * len(headers)) + " |")
+            for item in result[:20]:
+                values = [str(item.get(h, ""))[:25] for h in headers]
+                lines.append("| " + " | ".join(values) + " |")
+            return "\n".join(lines)
+        return "\n".join([f"- {item}" for item in result[:20]])
+
     if not isinstance(result, dict):
         return str(result)
 
     # Handle errors
     if result.get("error"):
         return f"❌ Error: {result['error']}"
+
+    # Format Google Ads GAQL search results
+    if tool_name == "google_ads_search" and result.get("results"):
+        results = result["results"]
+        if not results:
+            return "No se encontraron resultados para la consulta."
+
+        lines = [f"📊 **Resultados de Google Ads** ({len(results)} filas)\n"]
+
+        # Get headers from first result, excluding internal fields
+        headers = [k for k in results[0].keys() if not k.startswith("_")][:6]
+        lines.append("| " + " | ".join(headers) + " |")
+        lines.append("| " + " | ".join(["---"] * len(headers)) + " |")
+
+        for r in results[:25]:
+            values = []
+            for h in headers:
+                val = r.get(h, "")
+                # Handle nested dicts
+                if isinstance(val, dict):
+                    val = str(list(val.values())[0]) if val else ""
+                values.append(str(val)[:30])
+            lines.append("| " + " | ".join(values) + " |")
+
+        if result.get("errors"):
+            lines.append(f"\n⚠️ Errores en algunas cuentas: {len(result['errors'])}")
+
+        return "\n".join(lines)
 
     # Format Google Ads campaigns
     if tool_name == "google_ads_list_campaigns" and result.get("campaigns"):
