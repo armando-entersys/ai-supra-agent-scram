@@ -42,10 +42,15 @@ def _format_tool_result(tool_name: str, result: Any) -> str:
     Returns:
         Human-readable formatted string
     """
+    # Handle None
+    if result is None:
+        return "Operación completada sin resultados."
+
+    # Handle strings
     if isinstance(result, str):
         return result
 
-    # Handle list results
+    # Handle list results FIRST (before trying .get())
     if isinstance(result, list):
         if not result:
             return "No se encontraron resultados."
@@ -60,11 +65,15 @@ def _format_tool_result(tool_name: str, result: Any) -> str:
             return "\n".join(lines)
         return "\n".join([f"- {item}" for item in result[:20]])
 
+    # Handle non-dict types
     if not isinstance(result, dict):
         return str(result)
 
-    # Handle errors
+    # Now we know result is a dict - handle errors
     if result.get("error"):
+        details = result.get("details", [])
+        if details:
+            return f"❌ Error: {result['error']}\nDetalles: {details[0] if details else ''}"
         return f"❌ Error: {result['error']}"
 
     # Format Google Ads GAQL search results
