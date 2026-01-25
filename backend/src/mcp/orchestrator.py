@@ -36,6 +36,7 @@ from src.mcp.google_ads import get_google_ads_tool, GoogleAdsTool
 from src.mcp.knowledge_base import KnowledgeBaseTool
 from src.mcp.web_search import get_web_search_tool, WebSearchTool
 from src.mcp.bigquery import get_bigquery_tool, BigQueryTool
+from src.mcp.autonomous_agent import get_data_discovery, get_autonomous_analyzer
 from src.mcp.benchmarks import (
     get_benchmarks_for_campaign,
     compare_to_benchmark,
@@ -411,6 +412,11 @@ Usa estos benchmarks para contextualizar el rendimiento del cliente.
 ---
 ## HERRAMIENTAS DISPONIBLES
 
+**🤖 HERRAMIENTAS AUTÓNOMAS (PREFERIR ESTAS):**
+- `bq_discover_data` - Descubre AUTOMÁTICAMENTE todos los datos disponibles
+- `bq_auto_analyze` - Análisis AUTÓNOMO completo (Ads + Prospectos + Cross-data)
+- `bq_smart_query` - Consultas inteligentes en lenguaje natural
+
 **Google Ads (USAR ESTAS, no GAQL):**
 - `google_ads_list_campaigns` - Lista todas las campañas con métricas
 - `google_ads_search_terms` - Términos de búsqueda reales (requiere campaign_id + customer_id)
@@ -421,8 +427,12 @@ Usa estos benchmarks para contextualizar el rendimiento del cliente.
 **Google Analytics (GA4):**
 - `run_report` - Reportes personalizados con dimensiones y métricas
 
-**BigQuery:**
+**BigQuery (Avanzado):**
+- `bq_list_datasets` - Lista datasets disponibles
+- `bq_list_tables` - Lista tablas en un dataset
+- `bq_get_table_schema` - Obtiene el esquema de una tabla
 - `bq_run_query` - Ejecutar consultas SQL personalizadas
+- `bq_export_google_ads` - Exportar datos de Google Ads a BigQuery
 
 **Otros:**
 - `search_knowledge_base` - Documentos internos SCRAM
@@ -434,6 +444,8 @@ Usa estos benchmarks para contextualizar el rendimiento del cliente.
 3. NUNCA pidas IDs al usuario - obtén los IDs llamando primero a `google_ads_list_campaigns`
 4. Siempre usa `google_ads_list_campaigns` PRIMERO para obtener campaign_id y customer_id
 5. PUEDES encadenar múltiples herramientas para análisis profundo (hasta 10 llamadas)
+6. **COMPORTAMIENTO AUTÓNOMO:** Para preguntas complejas o análisis cruzados, usa `bq_auto_analyze` o `bq_smart_query` que automáticamente exploran y cruzan datos
+7. **EXPLORACIÓN PROACTIVA:** Si no sabes qué datos existen, usa `bq_discover_data` para explorar automáticamente
 
 ---
 ## EJEMPLO DE RESPUESTA IDEAL

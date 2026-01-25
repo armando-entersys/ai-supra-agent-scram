@@ -130,8 +130,9 @@ async def root() -> JSONResponse:
 # ═══════════════════════════════════════════════════════════════
 # API Routers
 # ═══════════════════════════════════════════════════════════════
-from src.api.v1 import chat, documents, health
+from src.api.v1 import chat, documents, health, audio
 
 app.include_router(health.router, prefix="/api/v1")
 app.include_router(chat.router, prefix="/api/v1")
 app.include_router(documents.router, prefix="/api/v1")
+app.include_router(audio.router, prefix="/api/v1")

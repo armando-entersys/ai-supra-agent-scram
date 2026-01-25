@@ -10,6 +10,7 @@ from google.cloud import bigquery
 from vertexai.generative_models import FunctionDeclaration
 
 from src.config import get_settings
+from src.mcp.autonomous_agent import get_data_discovery, get_autonomous_analyzer
 
 logger = structlog.get_logger()
 settings = get_settings()
@@ -202,6 +203,74 @@ class BigQueryTool:
                     "required": ["file_type", "file_path"],
                 },
             ),
+            FunctionDeclaration(
+                name="bq_discover_data",
+                description="""Descubre AUTOMÁTICAMENTE todos los datos disponibles en BigQuery.
+                USAR ESTO PRIMERO para entender qué datos existen antes de cualquier análisis.
+
+                Retorna:
+                - Lista de todos los datasets y tablas
+                - Esquema y columnas de cada tabla
+                - Valores de ejemplo
+                - Relaciones detectadas entre tablas
+                - Análisis recomendados
+
+                Esta herramienta permite exploración autónoma sin necesidad de conocer
+                la estructura de datos de antemano.""",
+                parameters={
+                    "type": "object",
+                    "properties": {},
+                },
+            ),
+            FunctionDeclaration(
+                name="bq_auto_analyze",
+                description="""Realiza ANÁLISIS AUTÓNOMO completo de todos los datos disponibles.
+
+                Esta herramienta es como un analista experto que:
+                1. Explora todos los datos de Google Ads
+                2. Analiza prospectos y clientes
+                3. Cruza datos de múltiples fuentes
+                4. Detecta anomalías automáticamente
+                5. Genera recomendaciones accionables
+
+                USAR cuando se necesita un diagnóstico general o no se sabe por dónde empezar.
+                El análisis es proactivo y descubre insights sin necesidad de preguntas específicas.""",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "focus_area": {
+                            "type": "string",
+                            "description": "Área opcional de enfoque: 'ads', 'prospects', 'cross_analysis', 'anomalies'",
+                        },
+                    },
+                },
+            ),
+            FunctionDeclaration(
+                name="bq_smart_query",
+                description="""Ejecuta consultas inteligentes que cruzan múltiples fuentes de datos.
+
+                A diferencia de bq_run_query, esta herramienta:
+                - Detecta automáticamente las tablas relevantes
+                - Encuentra las columnas de JOIN
+                - Optimiza la consulta
+                - Agrega contexto de benchmarks
+
+                Ideal para preguntas complejas como:
+                - "¿Cuántos clientes están en zonas donde hacemos publicidad?"
+                - "¿Qué campañas tienen mejor ROI por región?"
+                - "¿Hay desalineación entre clientes y targeting?"
+                """,
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "question": {
+                            "type": "string",
+                            "description": "Pregunta en lenguaje natural sobre los datos",
+                        },
+                    },
+                    "required": ["question"],
+                },
+            ),
         ]
 
     async def execute(self, tool_name: str, tool_args: dict[str, Any]) -> str:
@@ -251,6 +320,16 @@ class BigQueryTool:
                 return await self._upload_prospects(
                     tool_args.get("file_type", ""),
                     tool_args.get("file_path", ""),
+                )
+            elif tool_name == "bq_discover_data":
+                return await self._discover_data()
+            elif tool_name == "bq_auto_analyze":
+                return await self._auto_analyze(
+                    tool_args.get("focus_area"),
+                )
+            elif tool_name == "bq_smart_query":
+                return await self._smart_query(
+                    tool_args.get("question", ""),
                 )
             else:
                 return f"Error: Unknown BigQuery tool: {tool_name}"
@@ -502,6 +581,250 @@ class BigQueryTool:
         except Exception as e:
             logger.error("CSV upload error", error=str(e))
             return f"Error subiendo datos CSV: {str(e)}"
+
+    async def _discover_data(self) -> str:
+        """Autonomously discover all available data."""
+        try:
+            discovery = get_data_discovery()
+            if not discovery:
+                return "Error: Sistema de descubrimiento de datos no disponible."
+
+            context = await discovery.get_data_context()
+
+            if not context:
+                return "No se encontraron datos en BigQuery."
+
+            return f"""🔍 **DESCUBRIMIENTO AUTÓNOMO DE DATOS**
+
+{context}
+
+---
+💡 **Tip:** Usa `bq_auto_analyze` para un análisis completo automático de estos datos."""
+
+        except Exception as e:
+            logger.error("Data discovery error", error=str(e))
+            return f"Error en descubrimiento de datos: {str(e)}"
+
+    async def _auto_analyze(self, focus_area: str | None = None) -> str:
+        """Perform autonomous analysis of all data."""
+        try:
+            analyzer = get_autonomous_analyzer()
+            if not analyzer:
+                return "Error: Analizador autónomo no disponible."
+
+            results = await analyzer.auto_analyze(context=focus_area or "")
+
+            if "error" in results:
+                return f"Error en análisis: {results['error']}"
+
+            output = ["🤖 **ANÁLISIS AUTÓNOMO COMPLETO**\n"]
+
+            # Data overview
+            overview = results.get("data_overview", {})
+            output.append("## 📊 Resumen de Datos")
+            output.append(f"- **Datasets:** {overview.get('datasets', 0)}")
+            output.append(f"- **Tablas:** {overview.get('total_tables', 0)}")
+            output.append(f"- **Relaciones detectadas:** {overview.get('relationships', 0)}\n")
+
+            # Key metrics - Google Ads
+            ads_metrics = results.get("key_metrics", {}).get("google_ads", {})
+            if ads_metrics and "error" not in ads_metrics:
+                output.append("## 📈 Google Ads")
+                output.append(f"- **Campañas activas:** {ads_metrics.get('campaigns', 0)}")
+                output.append(f"- **Gasto total:** ${ads_metrics.get('total_spend', 0):,.2f}")
+                output.append(f"- **Conversiones:** {ads_metrics.get('total_conversions', 0)}")
+                output.append(f"- **CTR promedio:** {ads_metrics.get('avg_ctr', 0):.2f}%")
+
+                no_conv = ads_metrics.get('campaigns_without_conversions', 0)
+                if no_conv > 0:
+                    output.append(f"- ⚠️ **Campañas sin conversiones:** {no_conv}\n")
+                else:
+                    output.append("")
+
+            # Key metrics - Prospects
+            prospects = results.get("key_metrics", {}).get("prospects", {})
+            if prospects and "error" not in prospects:
+                output.append("## 👥 Prospectos/Clientes")
+                output.append(f"- **Total clientes:** {prospects.get('total_clients', 0):,}")
+                output.append(f"- **Ciudades únicas:** {prospects.get('unique_cities', 0)}")
+                output.append(f"- **Estados/Regiones:** {prospects.get('unique_states', 0)}")
+                output.append(f"- **Segmentos:** {prospects.get('segments', 0)}\n")
+
+            # Cross-analysis
+            cross = results.get("cross_analysis", {})
+            if cross and "error" not in cross:
+                output.append("## 🔗 Análisis Cruzado (Clientes vs Ads)")
+                output.append(f"- **Ciudades de clientes analizadas:** {cross.get('client_cities_analyzed', 0)}")
+                output.append(f"- **Con cobertura publicitaria:** {cross.get('cities_with_ad_coverage', 0)}")
+
+                coverage = cross.get("cities_with_ad_coverage", 0)
+                total = cross.get("client_cities_analyzed", 1)
+                pct = (coverage / total) * 100 if total > 0 else 0
+                if pct < 50:
+                    output.append(f"- ⚠️ **Solo {pct:.0f}% de ciudades con clientes tienen ads**\n")
+                else:
+                    output.append(f"- ✅ **{pct:.0f}% de cobertura**\n")
+
+            # Anomalies
+            anomalies = results.get("anomalies", [])
+            if anomalies:
+                output.append("## 🚨 Anomalías Detectadas")
+                for anomaly in anomalies:
+                    severity_icon = "🔴" if anomaly["severity"] == "critical" else "🟡"
+                    output.append(f"{severity_icon} **{anomaly['entity']}:** {anomaly['details']}")
+                output.append("")
+
+            # Recommendations
+            recommendations = results.get("recommendations", [])
+            if recommendations:
+                output.append("## 💡 Recomendaciones")
+                for i, rec in enumerate(recommendations, 1):
+                    priority = "🔥" if rec["priority"] == "urgent" else "⭐"
+                    output.append(f"\n{priority} **{i}. {rec['action']}**")
+                    output.append(f"   _{rec['reason']}_")
+                    if rec.get("steps"):
+                        for step in rec["steps"]:
+                            output.append(f"   - {step}")
+
+            return "\n".join(output)
+
+        except Exception as e:
+            logger.error("Auto analyze error", error=str(e))
+            return f"Error en análisis autónomo: {str(e)}"
+
+    async def _smart_query(self, question: str) -> str:
+        """Execute an intelligent cross-data query based on natural language."""
+        try:
+            # First, discover available data
+            discovery = get_data_discovery()
+            if not discovery:
+                return "Error: Sistema de descubrimiento no disponible."
+
+            data = await discovery.discover_all_data()
+            datasets = data.get("datasets", {})
+            relationships = data.get("relationships", [])
+
+            # Analyze the question and build appropriate query
+            question_lower = question.lower()
+            output = [f"🔍 **Consulta Inteligente:** _{question}_\n"]
+
+            # Detect question type and build query
+            if any(word in question_lower for word in ["cliente", "prospecto", "industrial"]):
+                if "google_ads_data" in datasets and "prospects_data" in datasets:
+                    # Cross-query between clients and ads
+                    query = self._build_cross_query(question_lower, datasets)
+                    if query:
+                        result = await self._run_query(query, max_results=50)
+                        output.append("## Resultados del Análisis Cruzado")
+                        output.append(result)
+                    else:
+                        output.append("No se pudo construir una consulta para esta pregunta.")
+                else:
+                    output.append("Se requieren datos de Google Ads y Prospectos para este análisis.")
+
+            elif any(word in question_lower for word in ["campaña", "rendimiento", "ctr", "cpc", "roi"]):
+                # Google Ads focused query
+                if "google_ads_data" in datasets:
+                    query = """
+                        SELECT
+                            campaign_name,
+                            SUM(impressions) as impresiones,
+                            SUM(clicks) as clicks,
+                            ROUND(SAFE_DIVIDE(SUM(clicks), SUM(impressions)) * 100, 2) as ctr,
+                            ROUND(SUM(cost), 2) as costo,
+                            SUM(conversions) as conversiones,
+                            ROUND(SAFE_DIVIDE(SUM(cost), NULLIF(SUM(conversions), 0)), 2) as cpa
+                        FROM `mi-infraestructura-web.google_ads_data.campaign_performance`
+                        GROUP BY campaign_name
+                        ORDER BY costo DESC
+                    """
+                    result = await self._run_query(query, max_results=20)
+                    output.append("## Rendimiento de Campañas")
+                    output.append(result)
+                else:
+                    output.append("No hay datos de Google Ads disponibles.")
+
+            elif any(word in question_lower for word in ["geografía", "región", "ciudad", "estado", "ubicación"]):
+                # Geographic analysis
+                queries_run = []
+
+                if "prospects_data" in datasets:
+                    query1 = """
+                        SELECT state, city, COUNT(*) as clientes
+                        FROM `mi-infraestructura-web.prospects_data.industrial_clients`
+                        GROUP BY state, city
+                        ORDER BY clientes DESC
+                        LIMIT 15
+                    """
+                    result1 = await self._run_query(query1, max_results=15)
+                    output.append("## Distribución Geográfica de Clientes")
+                    output.append(result1)
+                    queries_run.append("clients")
+
+                if "google_ads_data" in datasets and "geographic_performance" in datasets.get("google_ads_data", {}).get("tables", {}):
+                    query2 = """
+                        SELECT country_id, SUM(clicks) as clicks, ROUND(SUM(cost), 2) as costo
+                        FROM `mi-infraestructura-web.google_ads_data.geographic_performance`
+                        GROUP BY country_id
+                        ORDER BY costo DESC
+                    """
+                    result2 = await self._run_query(query2, max_results=15)
+                    output.append("\n## Inversión Publicitaria por Región")
+                    output.append(result2)
+
+            else:
+                # Default: show available analyses
+                output.append("## Análisis Disponibles")
+                output.append("\nNo detecté una consulta específica. Puedo ayudarte con:")
+                output.append("- **Clientes/Prospectos:** ¿Cuántos clientes hay por región?")
+                output.append("- **Campañas:** ¿Cuál es el rendimiento de las campañas?")
+                output.append("- **Cruce:** ¿Dónde están los clientes vs dónde invertimos?")
+                output.append("\n_Prueba: 'bq_auto_analyze' para un análisis completo automático._")
+
+            return "\n".join(output)
+
+        except Exception as e:
+            logger.error("Smart query error", error=str(e))
+            return f"Error en consulta inteligente: {str(e)}"
+
+    def _build_cross_query(self, question: str, datasets: dict) -> str | None:
+        """Build a cross-data query based on the question."""
+        try:
+            # Default cross-query: clients by city with ad coverage
+            return """
+                WITH client_cities AS (
+                    SELECT
+                        LOWER(TRIM(city)) as city,
+                        state,
+                        COUNT(*) as total_clientes
+                    FROM `mi-infraestructura-web.prospects_data.industrial_clients`
+                    WHERE city IS NOT NULL
+                    GROUP BY city, state
+                ),
+                ad_terms AS (
+                    SELECT
+                        search_term,
+                        SUM(clicks) as clicks,
+                        SUM(cost) as cost,
+                        SUM(conversions) as conversions
+                    FROM `mi-infraestructura-web.google_ads_data.search_terms`
+                    GROUP BY search_term
+                )
+                SELECT
+                    c.city,
+                    c.state,
+                    c.total_clientes,
+                    COALESCE(SUM(a.clicks), 0) as clicks_relacionados,
+                    COALESCE(ROUND(SUM(a.cost), 2), 0) as inversion_relacionada
+                FROM client_cities c
+                LEFT JOIN ad_terms a
+                    ON LOWER(a.search_term) LIKE CONCAT('%', c.city, '%')
+                GROUP BY c.city, c.state, c.total_clientes
+                ORDER BY c.total_clientes DESC
+                LIMIT 20
+            """
+        except Exception:
+            return None
 
 
 def get_bigquery_tool() -> BigQueryTool | None:
