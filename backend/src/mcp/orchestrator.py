@@ -2,11 +2,21 @@
 
 Coordinates the interaction between the LLM, RAG context,
 and MCP tools (Google Analytics, Knowledge Base).
+
+Improvements implemented:
+- Temperature 1.0 (Google recommendation for Gemini 2.0+)
+- Chain-of-Thought prompting
+- Industry benchmarks integration
+- Persistent memory system
+- Proactive alerts
+- Compositional function calling (up to 10 chained calls)
+- Robust error handling with retries
 """
 
 import json
 from datetime import datetime
 from typing import Any, AsyncGenerator
+import asyncio
 
 import structlog
 from google.cloud import aiplatform
@@ -26,10 +36,23 @@ from src.mcp.google_ads import get_google_ads_tool, GoogleAdsTool
 from src.mcp.knowledge_base import KnowledgeBaseTool
 from src.mcp.web_search import get_web_search_tool, WebSearchTool
 from src.mcp.bigquery import get_bigquery_tool, BigQueryTool
+from src.mcp.benchmarks import (
+    get_benchmarks_for_campaign,
+    compare_to_benchmark,
+    format_benchmark_comparison,
+    INDUSTRY_BENCHMARKS,
+)
+from src.mcp.memory import get_agent_memory
+from src.mcp.alerts import get_campaign_alerts, format_alerts_for_display
+from src.mcp.response_templates import ResponseTemplates
 from src.rag.retrieval import get_context_for_query
 
 logger = structlog.get_logger()
 settings = get_settings()
+
+# Retry configuration
+MAX_RETRIES = 3
+RETRY_DELAY = 1.0  # seconds
 
 
 def _format_tool_result(tool_name: str, result: Any) -> str:
@@ -72,9 +95,19 @@ def _format_tool_result(tool_name: str, result: Any) -> str:
     # Now we know result is a dict - handle errors
     if result.get("error"):
         details = result.get("details", [])
+        error_msg = result['error']
+
+        # Provide user-friendly error messages
+        if "quota" in error_msg.lower():
+            return "⚠️ Se alcanzó el límite de consultas. Intenta de nuevo en unos minutos."
+        if "permission" in error_msg.lower() or "access" in error_msg.lower():
+            return "⚠️ No tengo acceso a este recurso. Verifica los permisos configurados."
+        if "not found" in error_msg.lower():
+            return "⚠️ No se encontró el recurso solicitado."
+
         if details:
-            return f"❌ Error: {result['error']}\nDetalles: {details[0] if details else ''}"
-        return f"❌ Error: {result['error']}"
+            return f"❌ Error: {error_msg}\nDetalles: {details[0] if details else ''}"
+        return f"❌ Error: {error_msg}"
 
     # Format Google Ads GAQL search results
     if tool_name == "google_ads_search":
@@ -83,7 +116,7 @@ def _format_tool_result(tool_name: str, result: Any) -> str:
 
         # Handle empty results with errors
         if not results and errors:
-            return f"⚠️ La consulta no retornó resultados. Usa herramientas específicas como `google_ads_list_campaigns` o `google_ads_search_terms`."
+            return "⚠️ La consulta no retornó resultados. Usa herramientas específicas como `google_ads_list_campaigns` o `google_ads_search_terms`."
 
         if not results:
             return "No se encontraron datos para esta consulta."
@@ -110,20 +143,35 @@ def _format_tool_result(tool_name: str, result: Any) -> str:
 
         return "\n".join(lines)
 
-    # Format Google Ads campaigns
+    # Format Google Ads campaigns with benchmark comparison
     if tool_name == "google_ads_list_campaigns" and result.get("campaigns"):
         campaigns = result["campaigns"]
         lines = [f"📊 **Campañas de Google Ads** ({len(campaigns)} encontradas)\n"]
 
         for c in campaigns[:10]:
             status_emoji = "✅" if c.get("status") == "ENABLED" else "⏸️"
-            lines.append(f"### {status_emoji} {c.get('name', 'Sin nombre')}")
+            campaign_name = c.get('name', 'Sin nombre')
+            lines.append(f"### {status_emoji} {campaign_name}")
             lines.append(f"- **Impresiones:** {c.get('impressions', 0):,}")
             lines.append(f"- **Clics:** {c.get('clicks', 0):,}")
             lines.append(f"- **Costo:** ${c.get('cost', 0):,.2f}")
             lines.append(f"- **Conversiones:** {c.get('conversions', 0)}")
             lines.append(f"- **CTR:** {c.get('ctr', 0)}%")
             lines.append(f"- **CPC Promedio:** ${c.get('avg_cpc', 0):.2f}")
+
+            # Add benchmark comparison
+            try:
+                benchmarks = get_benchmarks_for_campaign(campaign_name)
+                actual_ctr = float(c.get('ctr', 0))
+                benchmark_ctr = benchmarks.get('avg_ctr', 3.0)
+                if actual_ctr > 0:
+                    ctr_diff = ((actual_ctr - benchmark_ctr) / benchmark_ctr) * 100
+                    ctr_indicator = "✅" if actual_ctr >= benchmark_ctr else "⚠️"
+                    sign = "+" if ctr_diff > 0 else ""
+                    lines.append(f"- **vs Benchmark CTR:** {ctr_indicator} {sign}{ctr_diff:.0f}%")
+            except Exception:
+                pass
+
             lines.append("")
 
         return "\n".join(lines)
@@ -227,27 +275,48 @@ class AgentOrchestrator:
         self.web_tool = get_web_search_tool()  # Web search tool
         self.bq_tool = get_bigquery_tool()  # BigQuery for advanced analytics
 
+        # Initialize memory and alerts (may be None if BigQuery not available)
+        self.memory = get_agent_memory()
+        self.alerts = get_campaign_alerts()
+
         # Build Gemini tool definitions
         self.tools = self._build_tools()
 
-        # Initialize model with higher token limit for complex analysis
+        # Initialize model with TEMPERATURE 1.0 (Google recommendation for Gemini 2.0+)
         self.model = GenerativeModel(
             settings.gemini_model,
             tools=self.tools,
             generation_config=GenerationConfig(
-                temperature=0.7,
+                temperature=1.0,  # Recommended by Google for Gemini 2.0+
                 top_p=0.95,
                 max_output_tokens=8192,
             ),
         )
 
-        # System instruction with current date
-        from datetime import datetime
+        # System instruction with Chain-of-Thought prompting
+        self.system_instruction = self._build_system_instruction()
+
+        logger.info(
+            "AgentOrchestrator initialized",
+            model=settings.gemini_model,
+            temperature=1.0,
+            tools_count=len(self.tools[0].function_declarations) if self.tools else 0,
+            memory_enabled=self.memory is not None,
+            alerts_enabled=self.alerts is not None,
+        )
+
+    def _build_system_instruction(self) -> str:
+        """Build the system instruction with CoT prompting."""
         now = datetime.now()
         current_date = now.strftime("%Y-%m-%d")
-        first_day_of_month = now.replace(day=1).strftime("%Y-%m-%d")
 
-        self.system_instruction = f"""# ROL: CONSULTOR ESTRATÉGICO DE MARKETING DIGITAL
+        # Get industry benchmarks for context
+        benchmarks_context = "\n".join([
+            f"- **{industry.replace('_', ' ').title()}**: CTR {data['avg_ctr']}%, CPC ${data['avg_cpc']}, Conv Rate {data['avg_conversion_rate']}%"
+            for industry, data in list(INDUSTRY_BENCHMARKS.items())[:3]
+        ])
+
+        return f"""# ROL: CONSULTOR ESTRATÉGICO DE MARKETING DIGITAL
 
 Eres un consultor de élite que combina:
 - **Visión de negocios** nivel Harvard MBA (ROI, estrategia, decisiones basadas en datos)
@@ -265,9 +334,23 @@ Tu cliente es **SCRAM**, empresa de tecnología y seguridad electrónica.
 - Traduce TODOS los datos técnicos al idioma del usuario
 
 ---
-## CÓMO ANALIZAR (FRAMEWORK DE ANÁLISIS)
+## PROCESO DE PENSAMIENTO (Chain-of-Thought)
 
-Cuando analices datos, sigue este framework:
+Antes de responder, sigue estos pasos INTERNAMENTE:
+
+1. **IDENTIFICAR**: ¿Qué datos necesito para responder completamente?
+2. **OBTENER**: Llamar a las herramientas necesarias (puedes encadenar hasta 10)
+3. **ANALIZAR**:
+   - Calcular métricas derivadas (CPA, ROAS, etc.)
+   - Comparar con benchmarks de industria
+   - Identificar patrones y anomalías
+4. **SINTETIZAR**: Formular insights accionables
+5. **RESPONDER**: Presentar de forma clara y estructurada
+
+**IMPORTANTE:** Solo muestra el paso 5 al usuario. El análisis interno no se muestra.
+
+---
+## FRAMEWORK DE ANÁLISIS
 
 ### 1. DIAGNÓSTICO (¿Qué está pasando?)
 - Resume los datos clave en 2-3 oraciones
@@ -284,9 +367,7 @@ Cuando analices datos, sigue este framework:
 - Quick wins vs. cambios estratégicos
 
 ---
-## FORMATO DE RESPUESTA
-
-Estructura SIEMPRE tu respuesta así:
+## FORMATO DE RESPUESTA OBLIGATORIO
 
 **📊 RESUMEN EJECUTIVO**
 [1-2 oraciones con el hallazgo principal]
@@ -299,6 +380,13 @@ Estructura SIEMPRE tu respuesta así:
 
 **✅ RECOMENDACIONES**
 [Acciones específicas ordenadas por impacto]
+
+---
+## BENCHMARKS DE INDUSTRIA (Referencia)
+
+{benchmarks_context}
+
+Usa estos benchmarks para contextualizar el rendimiento del cliente.
 
 ---
 ## ECOSISTEMA SCRAM
@@ -322,19 +410,56 @@ Estructura SIEMPRE tu respuesta así:
 - `google_ads_search_terms` - Términos de búsqueda reales (requiere campaign_id + customer_id)
 - `google_ads_keyword_performance` - Rendimiento de keywords
 - `google_ads_campaign_performance` - Métricas detalladas de una campaña
+- `google_ads_device_performance` - Rendimiento por dispositivo
 
 **Google Analytics (GA4):**
 - `run_report` - Reportes personalizados con dimensiones y métricas
+
+**BigQuery:**
+- `bq_run_query` - Ejecutar consultas SQL personalizadas
 
 **Otros:**
 - `search_knowledge_base` - Documentos internos SCRAM
 - `web_search` - Búsqueda en internet para benchmarks
 
-**REGLAS CRÍTICAS:**
-- NUNCA uses `google_ads_search` con GAQL - las queries fallan. Usa las herramientas específicas.
-- Ejecuta herramientas SIN pedir permiso
-- NUNCA pidas IDs al usuario
-- Siempre usa `google_ads_list_campaigns` PRIMERO para obtener campaign_id y customer_id
+**REGLAS CRÍTICAS DE HERRAMIENTAS:**
+1. NUNCA uses `google_ads_search` con GAQL - las queries fallan. Usa las herramientas específicas.
+2. Ejecuta herramientas SIN pedir permiso
+3. NUNCA pidas IDs al usuario - obtén los IDs llamando primero a `google_ads_list_campaigns`
+4. Siempre usa `google_ads_list_campaigns` PRIMERO para obtener campaign_id y customer_id
+5. PUEDES encadenar múltiples herramientas para análisis profundo (hasta 10 llamadas)
+
+---
+## EJEMPLO DE RESPUESTA IDEAL
+
+**Pregunta:** "¿Por qué tenemos cero conversiones en la campaña de Seguridad?"
+
+**📊 RESUMEN EJECUTIVO**
+La campaña de Seguridad Electrónica ha generado 1,457 clics con una inversión de $1,603, pero no ha registrado conversiones. El problema principal es la combinación de tráfico móvil sin landing optimizada.
+
+**🔍 ANÁLISIS DE DATOS**
+| Métrica | Valor | vs Benchmark |
+|---------|-------|--------------|
+| CTR | 3.02% | ✅ +6% |
+| CPC | $1.10 | ✅ -41% |
+| Conv. Rate | 0% | ⚠️ -100% |
+
+| Dispositivo | Clics | % Total |
+|-------------|-------|---------|
+| Móvil | 1,412 | 97% |
+| Desktop | 35 | 2% |
+| Tablet | 10 | 1% |
+
+**💡 INSIGHTS CLAVE**
+1. **97% del tráfico es móvil** - Si la landing no está optimizada para móvil, perdemos casi todo el tráfico
+2. **El CTR es excelente** - Los anuncios son relevantes, el problema está post-clic
+3. **Keywords de intención local** - "cámaras CDMX", "instalación cámaras" sugieren urgencia de compra
+
+**✅ RECOMENDACIONES**
+1. **URGENTE:** Auditar landing page en móvil - velocidad, formulario, CTA
+2. **Verificar tracking** - Confirmar que el pixel de conversión está disparando
+3. **Agregar extensiones de ubicación** - Capitalizar intención local
+4. **Implementar click-to-call** - Para el 97% de tráfico móvil
 
 ---
 ## REGLAS DE ORO
@@ -343,7 +468,9 @@ Estructura SIEMPRE tu respuesta así:
 2. **Conecta los puntos** - Cruza datos de diferentes fuentes
 3. **Prioriza el impacto** - Enfócate en lo que mueve la aguja del negocio
 4. **Sé directo** - Menos palabras, más valor
-5. **Siempre recomienda** - Nunca termines sin una acción clara"""
+5. **Siempre recomienda** - Nunca termines sin una acción clara
+6. **Compara con benchmarks** - Contextualiza cada métrica
+7. **Identifica la causa raíz** - No solo síntomas"""
 
     def _build_tools(self) -> list[Tool]:
         """Build Gemini tool definitions from MCP tools.
@@ -380,6 +507,53 @@ Estructura SIEMPRE tu respuesta así:
 
         return [Tool(function_declarations=function_declarations)]
 
+    async def _execute_tool_with_retry(
+        self,
+        tool_name: str,
+        tool_args: dict[str, Any],
+        max_retries: int = MAX_RETRIES
+    ) -> dict[str, Any]:
+        """Execute a tool call with retry logic.
+
+        Args:
+            tool_name: Name of the tool to execute
+            tool_args: Arguments for the tool
+            max_retries: Maximum retry attempts
+
+        Returns:
+            Tool execution result
+        """
+        last_error = None
+
+        for attempt in range(max_retries):
+            try:
+                result = await self._execute_tool(tool_name, tool_args)
+
+                # Check if result indicates an error that might be transient
+                if isinstance(result, dict) and result.get("error"):
+                    error_msg = result["error"].lower()
+                    # Retry on transient errors
+                    if any(x in error_msg for x in ["timeout", "rate limit", "temporarily"]):
+                        if attempt < max_retries - 1:
+                            await asyncio.sleep(RETRY_DELAY * (attempt + 1))
+                            continue
+
+                return result
+
+            except Exception as e:
+                last_error = e
+                logger.warning(
+                    "Tool execution attempt failed",
+                    tool_name=tool_name,
+                    attempt=attempt + 1,
+                    error=str(e)
+                )
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(RETRY_DELAY * (attempt + 1))
+
+        logger.error("Tool execution failed after retries", tool_name=tool_name, error=str(last_error))
+        return {"error": f"Error después de {max_retries} intentos: {str(last_error)}"}
+
     async def _execute_tool(self, tool_name: str, tool_args: dict[str, Any]) -> dict[str, Any]:
         """Execute a tool call and return the result.
 
@@ -413,7 +587,7 @@ Estructura SIEMPRE tu respuesta así:
             elif tool_name.startswith("bq_") and self.bq_tool:
                 result = await self.bq_tool.execute(tool_name, tool_args)
             else:
-                result = {"error": f"Unknown tool: {tool_name}"}
+                result = {"error": f"Herramienta desconocida: {tool_name}"}
 
             logger.info("Tool executed", tool_name=tool_name, success=True)
             return result
@@ -422,11 +596,51 @@ Estructura SIEMPRE tu respuesta así:
             logger.error("Tool execution failed", tool_name=tool_name, error=str(e))
             return {"error": str(e)}
 
+    async def _get_memory_context(self, user_id: str = "default") -> str:
+        """Get relevant context from memory system.
+
+        Args:
+            user_id: User identifier
+
+        Returns:
+            Memory context string or empty
+        """
+        if not self.memory:
+            return ""
+
+        try:
+            return await self.memory.get_conversation_summary(user_id)
+        except Exception as e:
+            logger.warning("Failed to get memory context", error=str(e))
+            return ""
+
+    async def _check_proactive_alerts(self) -> str:
+        """Check for any proactive alerts to include.
+
+        Returns:
+            Alerts summary or empty string
+        """
+        if not self.alerts:
+            return ""
+
+        try:
+            alerts = await self.alerts.check_all_alerts()
+            critical_alerts = [a for a in alerts if a.get("severity") == "critical"]
+
+            if critical_alerts:
+                return f"\n\n⚠️ **ALERTAS CRÍTICAS DETECTADAS:**\n{format_alerts_for_display(critical_alerts[:3])}"
+
+            return ""
+        except Exception as e:
+            logger.warning("Failed to check alerts", error=str(e))
+            return ""
+
     async def stream_response(
         self,
         messages: list[dict[str, str]],
         use_rag: bool = True,
         use_analytics: bool = True,
+        session_id: str = "default",
     ) -> AsyncGenerator[dict[str, Any], None]:
         """Stream response from Gemini with tool support.
 
@@ -434,6 +648,7 @@ Estructura SIEMPRE tu respuesta así:
             messages: Conversation history
             use_rag: Whether to include RAG context
             use_analytics: Whether to enable Analytics tools
+            session_id: Session identifier for memory
 
         Yields:
             Stream events (text, tool_call, error, done)
@@ -452,7 +667,7 @@ Estructura SIEMPRE tu respuesta así:
             contents.append(
                 Content(
                     role="model",
-                    parts=[Part.from_text("Entendido. Estoy listo para ayudarte.")],
+                    parts=[Part.from_text("Entendido. Estoy listo para ayudarte con análisis estratégico de marketing. Responderé siempre en tu idioma, usando datos reales y dando recomendaciones accionables.")],
                 )
             )
 
@@ -467,27 +682,39 @@ Estructura SIEMPRE tu respuesta así:
                     async with async_session_maker() as db:
                         rag_context = await get_context_for_query(db, last_user_msg)
 
+            # Get memory context
+            memory_context = await self._get_memory_context()
+
             # Add conversation history
             for msg in messages:
                 role = "user" if msg["role"] == "user" else "model"
                 content = msg["content"]
 
-                # Add RAG context to the last user message
-                if role == "user" and msg == messages[-1] and rag_context:
-                    content = f"{rag_context}\n\nPregunta del usuario: {content}"
+                # Add RAG and memory context to the last user message
+                if role == "user" and msg == messages[-1]:
+                    context_parts = []
+                    if memory_context:
+                        context_parts.append(f"**Contexto de sesiones anteriores:**\n{memory_context}")
+                    if rag_context:
+                        context_parts.append(f"**Documentos relevantes:**\n{rag_context}")
+
+                    if context_parts:
+                        content = "\n\n".join(context_parts) + f"\n\n**Pregunta del usuario:** {content}"
 
                 contents.append(
                     Content(role=role, parts=[Part.from_text(content)])
                 )
 
             # Start streaming
-            logger.info("Starting Gemini stream")
+            logger.info("Starting Gemini stream", session_id=session_id)
             response = self.model.generate_content(
                 contents,
                 stream=True,
             )
 
             chunk_count = 0
+            total_tool_calls = 0
+
             # Process response chunks
             for chunk in response:
                 chunk_count += 1
@@ -509,8 +736,9 @@ Estructura SIEMPRE tu respuesta así:
                                 },
                             }
 
-                            # Execute tool
-                            result = await self._execute_tool(tool_name, tool_args)
+                            # Execute tool with retry logic
+                            result = await self._execute_tool_with_retry(tool_name, tool_args)
+                            total_tool_calls += 1
 
                             # Emit tool result
                             yield {
@@ -543,12 +771,12 @@ Estructura SIEMPRE tu respuesta así:
                             )
 
                             # Get follow-up response - handle chained tool calls
-                            max_tool_calls = 10  # Prevent infinite loops
+                            max_tool_calls = 10  # Allow up to 10 chained calls
                             tool_call_count = 1
 
                             while tool_call_count < max_tool_calls:
                                 try:
-                                    logger.info("Generating follow-up response after tool execution", iteration=tool_call_count)
+                                    logger.info("Generating follow-up response", iteration=tool_call_count, total=total_tool_calls)
                                     follow_up = self.model.generate_content(
                                         contents,
                                         stream=True,
@@ -574,7 +802,10 @@ Estructura SIEMPRE tu respuesta así:
                                                         },
                                                     }
 
-                                                    next_result = await self._execute_tool(next_tool_name, next_tool_args)
+                                                    next_result = await self._execute_tool_with_retry(
+                                                        next_tool_name, next_tool_args
+                                                    )
+                                                    total_tool_calls += 1
 
                                                     yield {
                                                         "type": "tool_call",
@@ -612,7 +843,7 @@ Estructura SIEMPRE tu respuesta así:
                                             yield {"type": "text", "content": follow_chunk.text}
 
                                     if not has_function_call:
-                                        logger.info("Follow-up response completed", total_tool_calls=tool_call_count)
+                                        logger.info("Follow-up completed", total_tool_calls=total_tool_calls)
                                         break
 
                                 except Exception as follow_up_error:
@@ -624,7 +855,7 @@ Estructura SIEMPRE tu respuesta así:
                                         tool_call_count=tool_call_count,
                                         exc_info=True
                                     )
-                                    # Use formatted result instead of raw JSON
+                                    # Use formatted result with template
                                     formatted_result = _format_tool_result(tool_name, result)
                                     yield {
                                         "type": "text",
@@ -639,7 +870,22 @@ Estructura SIEMPRE tu respuesta así:
                     if chunk_count <= 3:
                         logger.debug("Chunk has no candidates or parts", chunk_num=chunk_count)
 
-            logger.info("Gemini stream completed", total_chunks=chunk_count)
+            logger.info("Gemini stream completed", total_chunks=chunk_count, total_tool_calls=total_tool_calls)
+
+            # Store conversation summary in memory if available
+            if self.memory and messages:
+                try:
+                    last_msg = messages[-1].get("content", "")[:200]
+                    await self.memory.store_context(
+                        session_id=session_id,
+                        context_type="summary",
+                        context_key=f"conversation_{datetime.now().strftime('%Y%m%d_%H%M')}",
+                        content={"summary": last_msg, "tool_calls": total_tool_calls},
+                        ttl_hours=168  # 1 week
+                    )
+                except Exception as mem_error:
+                    logger.warning("Failed to store memory", error=str(mem_error))
+
             # Emit done event
             yield {"type": "done"}
 
@@ -647,3 +893,18 @@ Estructura SIEMPRE tu respuesta así:
             logger.error("Stream response error", error=str(e), exc_info=True)
             yield {"type": "error", "message": str(e)}
             yield {"type": "done"}
+
+    async def get_daily_digest(self) -> str:
+        """Generate a daily digest with alerts and insights.
+
+        Returns:
+            Formatted daily digest
+        """
+        if not self.alerts:
+            return "Sistema de alertas no disponible."
+
+        try:
+            return await self.alerts.get_daily_digest()
+        except Exception as e:
+            logger.error("Failed to generate daily digest", error=str(e))
+            return f"Error generando resumen: {str(e)}"

@@ -1,15 +1,17 @@
 """Chat endpoints with SSE streaming.
 
 Implements conversational AI with MCP tool support and RAG context.
+Includes proactive alerts and daily digest functionality.
 """
 
 import json
-from typing import Annotated, AsyncGenerator
+from typing import Annotated, Any, AsyncGenerator
 from uuid import UUID
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -17,6 +19,8 @@ from sqlalchemy.orm import selectinload
 from src.database.connection import get_db
 from src.database.models import ChatMessage, ChatSession
 from src.mcp.orchestrator import AgentOrchestrator
+from src.mcp.alerts import get_campaign_alerts, format_alerts_for_display
+from src.mcp.memory import get_agent_memory
 from src.schemas.chat import (
     ChatMessageCreate,
     ChatMessageResponse,
@@ -336,3 +340,165 @@ async def stream_chat(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+# ─────────────────────────────────────────────────────────────
+# Alerts and Insights Endpoints
+# ─────────────────────────────────────────────────────────────
+
+
+class AlertResponse(BaseModel):
+    """Response model for alerts."""
+    type: str
+    severity: str
+    campaign_id: str | None = None
+    campaign_name: str | None = None
+    title: str
+    description: str
+    recommendation: str | None = None
+    data: dict[str, Any] | None = None
+
+
+class AlertsListResponse(BaseModel):
+    """Response model for alerts list."""
+    alerts: list[AlertResponse]
+    total: int
+    critical_count: int
+    warning_count: int
+    info_count: int
+
+
+class DailyDigestResponse(BaseModel):
+    """Response model for daily digest."""
+    digest: str
+    generated_at: str
+
+
+@router.get("/alerts", response_model=AlertsListResponse)
+async def get_alerts(
+    severity: Annotated[str | None, Query(description="Filter by severity: critical, warning, info")] = None,
+    campaign_id: Annotated[str | None, Query(description="Filter by campaign ID")] = None,
+) -> AlertsListResponse:
+    """Get active campaign alerts.
+
+    Checks all campaigns for performance anomalies and returns alerts
+    sorted by severity (critical first).
+
+    Args:
+        severity: Optional severity filter
+        campaign_id: Optional campaign filter
+
+    Returns:
+        List of alerts with counts by severity
+    """
+    alerts_system = get_campaign_alerts()
+
+    if not alerts_system:
+        raise HTTPException(
+            status_code=503,
+            detail="Sistema de alertas no disponible. Verifica la configuración de BigQuery."
+        )
+
+    try:
+        all_alerts = await alerts_system.check_all_alerts()
+
+        # Apply filters
+        if severity:
+            all_alerts = [a for a in all_alerts if a.get("severity") == severity]
+        if campaign_id:
+            all_alerts = [a for a in all_alerts if a.get("campaign_id") == campaign_id]
+
+        # Count by severity
+        critical = len([a for a in all_alerts if a.get("severity") == "critical"])
+        warning = len([a for a in all_alerts if a.get("severity") == "warning"])
+        info = len([a for a in all_alerts if a.get("severity") == "info"])
+
+        # Convert to response model
+        alert_responses = [
+            AlertResponse(
+                type=a.get("type", "unknown"),
+                severity=a.get("severity", "info"),
+                campaign_id=a.get("campaign_id"),
+                campaign_name=a.get("campaign_name"),
+                title=a.get("title", ""),
+                description=a.get("description", ""),
+                recommendation=a.get("recommendation"),
+                data=a.get("data"),
+            )
+            for a in all_alerts
+        ]
+
+        return AlertsListResponse(
+            alerts=alert_responses,
+            total=len(alert_responses),
+            critical_count=critical,
+            warning_count=warning,
+            info_count=info,
+        )
+
+    except Exception as e:
+        logger.error("Failed to get alerts", error=str(e))
+        raise HTTPException(status_code=500, detail=f"Error obteniendo alertas: {str(e)}")
+
+
+@router.get("/digest", response_model=DailyDigestResponse)
+async def get_daily_digest() -> DailyDigestResponse:
+    """Get daily performance digest.
+
+    Generates a comprehensive daily report with:
+    - Campaign performance summary
+    - Active alerts
+    - Key insights
+    - Recommended actions
+
+    Returns:
+        Formatted daily digest in markdown
+    """
+    try:
+        orchestrator = AgentOrchestrator()
+        digest = await orchestrator.get_daily_digest()
+
+        from datetime import datetime
+        return DailyDigestResponse(
+            digest=digest,
+            generated_at=datetime.now().isoformat(),
+        )
+
+    except Exception as e:
+        logger.error("Failed to generate digest", error=str(e))
+        raise HTTPException(status_code=500, detail=f"Error generando resumen: {str(e)}")
+
+
+@router.get("/insights")
+async def get_insights(
+    limit: Annotated[int, Query(ge=1, le=50)] = 20,
+) -> dict[str, Any]:
+    """Get stored insights from memory.
+
+    Retrieves historical insights that have been detected and stored.
+
+    Args:
+        limit: Maximum number of insights to return
+
+    Returns:
+        List of insights with metadata
+    """
+    memory = get_agent_memory()
+
+    if not memory:
+        raise HTTPException(
+            status_code=503,
+            detail="Sistema de memoria no disponible."
+        )
+
+    try:
+        insights = await memory.get_pending_insights()
+
+        return {
+            "insights": insights[:limit],
+            "total": len(insights),
+        }
+
+    except Exception as e:
+        logger.error("Failed to get insights", error=str(e))
+        raise HTTPException(status_code=500, detail=f"Error obteniendo insights: {str(e)}")
