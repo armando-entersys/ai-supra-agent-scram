@@ -296,11 +296,17 @@ class AgentOrchestrator:
         # System instruction with Chain-of-Thought prompting
         self.system_instruction = self._build_system_instruction()
 
+        # Count tools safely
+        try:
+            tools_count = len(self.tools[0]._raw_tool.function_declarations) if self.tools else 0
+        except (AttributeError, IndexError):
+            tools_count = len(self.tools) if self.tools else 0
+
         logger.info(
             "AgentOrchestrator initialized",
             model=settings.gemini_model,
             temperature=1.0,
-            tools_count=len(self.tools[0].function_declarations) if self.tools else 0,
+            tools_count=tools_count,
             memory_enabled=self.memory is not None,
             alerts_enabled=self.alerts is not None,
         )
