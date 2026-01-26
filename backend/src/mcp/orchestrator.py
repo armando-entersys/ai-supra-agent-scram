@@ -768,12 +768,11 @@ La campaña de Seguridad Electrónica ha generado 1,457 clics con una inversión
             # Process response chunks
             for chunk in response:
                 chunk_count += 1
-                logger.debug("Processing chunk", chunk_num=chunk_count, has_candidates=bool(chunk.candidates))
                 # Check for function calls
                 try:
                     has_parts = chunk.candidates and chunk.candidates[0].content.parts
                 except Exception as chunk_err:
-                    logger.error("Error accessing chunk content", error=str(chunk_err), chunk_num=chunk_count)
+                    logger.warning("Error accessing chunk content", error=str(chunk_err), chunk_num=chunk_count)
                     continue
                 if has_parts:
                     for part in chunk.candidates[0].content.parts:
