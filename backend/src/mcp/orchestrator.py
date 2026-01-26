@@ -56,6 +56,36 @@ MAX_RETRIES = 3
 RETRY_DELAY = 1.0  # seconds
 
 
+def _serialize_for_function_response(result: Any) -> dict:
+    """Serialize result for Vertex AI function response.
+
+    Vertex AI expects the function response to be a dict that can be
+    serialized to JSON. This ensures lists and other types are properly wrapped.
+
+    Args:
+        result: The raw result from a tool execution
+
+    Returns:
+        A dict suitable for Part.from_function_response
+    """
+    if result is None:
+        return {"status": "completed", "data": None}
+
+    if isinstance(result, str):
+        return {"status": "completed", "data": result}
+
+    if isinstance(result, list):
+        # Wrap list in a dict structure
+        return {"status": "completed", "items": result, "count": len(result)}
+
+    if isinstance(result, dict):
+        # Already a dict, just ensure it's JSON-serializable
+        return {"status": "completed", "data": result}
+
+    # Fallback for other types
+    return {"status": "completed", "data": str(result)}
+
+
 def _format_tool_result(tool_name: str, result: Any) -> str:
     """Format tool result into readable text for display.
 
@@ -791,7 +821,7 @@ IMPORTANTE: Ya tienes los datos. Ahora DEBES:
                                     parts=[
                                         Part.from_function_response(
                                             name=tool_name,
-                                            response={"result": result},
+                                            response=_serialize_for_function_response(result),
                                         ),
                                         Part.from_text(synthesis_instruction),
                                     ],
@@ -858,7 +888,7 @@ IMPORTANTE: Ya tienes los datos. Ahora DEBES:
                                                             parts=[
                                                                 Part.from_function_response(
                                                                     name=next_tool_name,
-                                                                    response={"result": next_result},
+                                                                    response=_serialize_for_function_response(next_result),
                                                                 ),
                                                                 Part.from_text(synthesis_reminder),
                                                             ],
