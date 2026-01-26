@@ -776,6 +776,15 @@ La campaña de Seguridad Electrónica ha generado 1,457 clics con una inversión
                                     parts=[part],
                                 )
                             )
+
+                            # Add tool result with synthesis instruction
+                            synthesis_instruction = """
+IMPORTANTE: Ya tienes los datos. Ahora DEBES:
+1. RESPONDER la pregunta original del usuario directamente
+2. NO mostrar datos crudos - sintetiza y analiza
+3. Usar el formato: RESUMEN EJECUTIVO → ANÁLISIS → INSIGHTS → RECOMENDACIONES
+4. Si necesitas más datos, llama otra herramienta. Si ya tienes suficiente, responde con análisis."""
+
                             contents.append(
                                 Content(
                                     role="user",
@@ -783,7 +792,8 @@ La campaña de Seguridad Electrónica ha generado 1,457 clics con una inversión
                                         Part.from_function_response(
                                             name=tool_name,
                                             response={"result": result},
-                                        )
+                                        ),
+                                        Part.from_text(synthesis_instruction),
                                     ],
                                 )
                             )
@@ -835,10 +845,13 @@ La campaña de Seguridad Electrónica ha generado 1,457 clics con una inversión
                                                         },
                                                     }
 
-                                                    # Add to conversation
+                                                    # Add to conversation with synthesis reminder
                                                     contents.append(
                                                         Content(role="model", parts=[follow_part])
                                                     )
+
+                                                    # Remind to synthesize after each tool
+                                                    synthesis_reminder = "Datos obtenidos. RESPONDE la pregunta del usuario con ANÁLISIS, no datos crudos."
                                                     contents.append(
                                                         Content(
                                                             role="user",
@@ -846,7 +859,8 @@ La campaña de Seguridad Electrónica ha generado 1,457 clics con una inversión
                                                                 Part.from_function_response(
                                                                     name=next_tool_name,
                                                                     response={"result": next_result},
-                                                                )
+                                                                ),
+                                                                Part.from_text(synthesis_reminder),
                                                             ],
                                                         )
                                                     )
