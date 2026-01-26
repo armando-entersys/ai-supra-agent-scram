@@ -768,13 +768,24 @@ La campaña de Seguridad Electrónica ha generado 1,457 clics con una inversión
             # Process response chunks
             for chunk in response:
                 chunk_count += 1
+                logger.debug("Processing chunk", chunk_num=chunk_count, has_candidates=bool(chunk.candidates))
                 # Check for function calls
-                if chunk.candidates and chunk.candidates[0].content.parts:
+                try:
+                    has_parts = chunk.candidates and chunk.candidates[0].content.parts
+                except Exception as chunk_err:
+                    logger.error("Error accessing chunk content", error=str(chunk_err), chunk_num=chunk_count)
+                    continue
+                if has_parts:
                     for part in chunk.candidates[0].content.parts:
                         if hasattr(part, "function_call") and part.function_call:
                             fc = part.function_call
                             tool_name = fc.name
-                            tool_args = dict(fc.args) if fc.args else {}
+                            # Safely convert args - handle potential proto/dict conversion issues
+                            try:
+                                tool_args = dict(fc.args) if fc.args else {}
+                            except (TypeError, AttributeError) as arg_err:
+                                logger.warning("Failed to convert args", error=str(arg_err), args_type=type(fc.args).__name__)
+                                tool_args = {}
 
                             # Emit tool call event
                             yield {
