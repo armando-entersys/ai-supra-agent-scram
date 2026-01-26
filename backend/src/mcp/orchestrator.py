@@ -809,11 +809,29 @@ La campaña de Seguridad Electrónica ha generado 1,457 clics con una inversión
 
                             # Add tool result with synthesis instruction
                             synthesis_instruction = """
-IMPORTANTE: Ya tienes los datos. Ahora DEBES:
-1. RESPONDER la pregunta original del usuario directamente
-2. NO mostrar datos crudos - sintetiza y analiza
-3. Usar el formato: RESUMEN EJECUTIVO → ANÁLISIS → INSIGHTS → RECOMENDACIONES
-4. Si necesitas más datos, llama otra herramienta. Si ya tienes suficiente, responde con análisis."""
+INSTRUCCIÓN CRÍTICA - OBLIGATORIO SEGUIR:
+
+Los datos ya fueron obtenidos. AHORA DEBES ANALIZAR Y RESPONDER.
+
+❌ PROHIBIDO: Mostrar tablas de datos, listas de métricas, o JSON
+❌ PROHIBIDO: Decir "aquí están los datos" o "los datos muestran"
+❌ PROHIBIDO: Repetir los números sin contexto estratégico
+
+✅ OBLIGATORIO: Usar EXACTAMENTE este formato:
+
+**📊 RESUMEN EJECUTIVO**
+[Una oración que responda directamente la pregunta del usuario]
+
+**🔍 ANÁLISIS**
+[Cruzar los datos y explicar POR QUÉ está pasando esto]
+
+**💡 INSIGHTS CLAVE**
+[2-3 conclusiones estratégicas, no datos crudos]
+
+**✅ RECOMENDACIONES**
+[Acciones específicas ordenadas por impacto]
+
+Si necesitas más datos, llama otra herramienta. Si ya tienes suficientes datos, RESPONDE CON ANÁLISIS ESTRATÉGICO."""
 
                             contents.append(
                                 Content(
@@ -881,7 +899,10 @@ IMPORTANTE: Ya tienes los datos. Ahora DEBES:
                                                     )
 
                                                     # Remind to synthesize after each tool
-                                                    synthesis_reminder = "Datos obtenidos. RESPONDE la pregunta del usuario con ANÁLISIS, no datos crudos."
+                                                    synthesis_reminder = """Datos adicionales obtenidos. Si ya tienes suficiente información:
+❌ NO muestres tablas ni datos crudos
+✅ RESPONDE con: RESUMEN EJECUTIVO → ANÁLISIS → INSIGHTS → RECOMENDACIONES
+Si necesitas más datos, llama otra herramienta."""
                                                     contents.append(
                                                         Content(
                                                             role="user",
