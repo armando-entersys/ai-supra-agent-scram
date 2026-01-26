@@ -68,22 +68,24 @@ def _serialize_for_function_response(result: Any) -> dict:
     Returns:
         A dict suitable for Part.from_function_response
     """
+    # Always wrap in a "result" key to maintain compatibility
+    # with Vertex AI's expected format
     if result is None:
-        return {"status": "completed", "data": None}
+        return {"result": None}
 
     if isinstance(result, str):
-        return {"status": "completed", "data": result}
+        return {"result": result}
 
     if isinstance(result, list):
-        # Wrap list in a dict structure
-        return {"status": "completed", "items": result, "count": len(result)}
+        # Wrap list in a dict - Vertex AI can't handle raw lists
+        return {"result": {"items": result, "count": len(result)}}
 
     if isinstance(result, dict):
-        # Already a dict, just ensure it's JSON-serializable
-        return {"status": "completed", "data": result}
+        # Already a dict, wrap it
+        return {"result": result}
 
     # Fallback for other types
-    return {"status": "completed", "data": str(result)}
+    return {"result": str(result)}
 
 
 def _format_tool_result(tool_name: str, result: Any) -> str:
