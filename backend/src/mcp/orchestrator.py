@@ -856,6 +856,8 @@ Los datos ya fueron obtenidos. AHORA DEBES ANALIZAR Y RESPONDER.
 
 Si necesitas más datos, llama otra herramienta. Si ya tienes suficientes datos, RESPONDE CON ANÁLISIS ESTRATÉGICO."""
 
+                            # Add function response as separate Content
+                            # (combining with text can cause SDK issues)
                             contents.append(
                                 Content(
                                     role="user",
@@ -864,8 +866,14 @@ Si necesitas más datos, llama otra herramienta. Si ya tienes suficientes datos,
                                             name=tool_name,
                                             response=_serialize_for_function_response(result),
                                         ),
-                                        Part.from_text(synthesis_instruction),
                                     ],
+                                )
+                            )
+                            # Add synthesis instruction as separate user message
+                            contents.append(
+                                Content(
+                                    role="user",
+                                    parts=[Part.from_text(synthesis_instruction)],
                                 )
                             )
 
@@ -921,11 +929,7 @@ Si necesitas más datos, llama otra herramienta. Si ya tienes suficientes datos,
                                                         Content(role="model", parts=[follow_part])
                                                     )
 
-                                                    # Remind to synthesize after each tool
-                                                    synthesis_reminder = """Datos adicionales obtenidos. Si ya tienes suficiente información:
-❌ NO muestres tablas ni datos crudos
-✅ RESPONDE con: RESUMEN EJECUTIVO → ANÁLISIS → INSIGHTS → RECOMENDACIONES
-Si necesitas más datos, llama otra herramienta."""
+                                                    # Add function response as separate Content
                                                     contents.append(
                                                         Content(
                                                             role="user",
@@ -934,8 +938,18 @@ Si necesitas más datos, llama otra herramienta."""
                                                                     name=next_tool_name,
                                                                     response=_serialize_for_function_response(next_result),
                                                                 ),
-                                                                Part.from_text(synthesis_reminder),
                                                             ],
+                                                        )
+                                                    )
+                                                    # Add synthesis reminder as separate user message
+                                                    synthesis_reminder = """Datos adicionales obtenidos. Si ya tienes suficiente información:
+❌ NO muestres tablas ni datos crudos
+✅ RESPONDE con: RESUMEN EJECUTIVO → ANÁLISIS → INSIGHTS → RECOMENDACIONES
+Si necesitas más datos, llama otra herramienta."""
+                                                    contents.append(
+                                                        Content(
+                                                            role="user",
+                                                            parts=[Part.from_text(synthesis_reminder)],
                                                         )
                                                     )
                                                     tool_call_count += 1
