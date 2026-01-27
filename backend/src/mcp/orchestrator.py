@@ -59,8 +59,8 @@ RETRY_DELAY = 1.0  # seconds
 def _serialize_for_function_response(result: Any) -> dict:
     """Serialize result for Vertex AI function response.
 
-    Vertex AI expects the function response to be a dict that can be
-    serialized to JSON. This ensures lists and other types are properly wrapped.
+    Vertex AI SDK has issues with complex nested structures (especially lists).
+    Convert everything to a JSON string for maximum compatibility.
 
     Args:
         result: The raw result from a tool execution
@@ -68,24 +68,25 @@ def _serialize_for_function_response(result: Any) -> dict:
     Returns:
         A dict suitable for Part.from_function_response
     """
-    # Always wrap in a "result" key to maintain compatibility
-    # with Vertex AI's expected format
-    if result is None:
-        return {"result": None}
+    # Convert complex results to JSON string to avoid Vertex AI SDK issues
+    # with nested lists and complex structures
+    try:
+        if result is None:
+            return {"result": "null"}
 
-    if isinstance(result, str):
-        return {"result": result}
+        if isinstance(result, str):
+            return {"result": result}
 
-    if isinstance(result, list):
-        # Wrap list in a dict - Vertex AI can't handle raw lists
-        return {"result": {"items": result, "count": len(result)}}
+        if isinstance(result, (bool, int, float)):
+            return {"result": str(result)}
 
-    if isinstance(result, dict):
-        # Already a dict, wrap it
-        return {"result": result}
+        # For dicts and lists, convert to JSON string
+        # This avoids the "'list' object has no attribute 'get'" error
+        return {"result": json.dumps(result, ensure_ascii=False, default=str)}
 
-    # Fallback for other types
-    return {"result": str(result)}
+    except Exception as e:
+        # Ultimate fallback - stringify whatever we got
+        return {"result": f"Result: {str(result)[:2000]}"}
 
 
 def _format_tool_result(tool_name: str, result: Any) -> str:
