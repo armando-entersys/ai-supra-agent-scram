@@ -126,22 +126,36 @@ def _format_tool_result(tool_name: str, result: Any) -> str:
     if not isinstance(result, dict):
         return str(result)
 
-    # Now we know result is a dict - handle errors
+    # Now we know result is a dict - handle errors with user-friendly messages
     if result.get("error"):
         details = result.get("details", [])
-        error_msg = result['error']
+        error_msg = str(result['error']).lower()
+        details_str = str(details[0]).lower() if details else ""
 
-        # Provide user-friendly error messages
-        if "quota" in error_msg.lower():
-            return "⚠️ Se alcanzó el límite de consultas. Intenta de nuevo en unos minutos."
-        if "permission" in error_msg.lower() or "access" in error_msg.lower():
-            return "⚠️ No tengo acceso a este recurso. Verifica los permisos configurados."
-        if "not found" in error_msg.lower():
-            return "⚠️ No se encontró el recurso solicitado."
+        # Google Ads specific errors
+        if "customer_not_found" in error_msg or "customer_not_found" in details_str:
+            return "⚠️ Cuenta de Google Ads no encontrada. Buscando en otras cuentas disponibles..."
+        if "authentication" in error_msg or "oauth" in error_msg:
+            return "⚠️ Problema de autenticación con Google Ads. El sistema intentará reconectarse."
+        if "authorization" in error_msg:
+            return "⚠️ Sin autorización para esta cuenta de Google Ads."
 
-        if details:
-            return f"❌ Error: {error_msg}\nDetalles: {details[0] if details else ''}"
-        return f"❌ Error: {error_msg}"
+        # GA4 specific errors
+        if "property" in error_msg and "not found" in error_msg:
+            return "⚠️ Propiedad de Google Analytics no encontrada."
+
+        # General errors
+        if "quota" in error_msg or "rate limit" in error_msg:
+            return "⚠️ Límite de consultas alcanzado. Reintentando en unos segundos..."
+        if "permission" in error_msg or "access" in error_msg:
+            return "⚠️ Sin permisos para acceder a este recurso."
+        if "timeout" in error_msg:
+            return "⚠️ La consulta tardó demasiado. Intentando con menos datos..."
+        if "not found" in error_msg:
+            return "⚠️ Recurso no encontrado."
+
+        # Generic fallback - don't show technical details
+        return "⚠️ No se pudieron obtener estos datos. Continuando con información disponible..."
 
     # Format Google Ads GAQL search results
     if tool_name == "google_ads_search":
@@ -374,53 +388,36 @@ Tu cliente es **SCRAM**, empresa de tecnología y seguridad electrónica.
 - Traduce TODOS los datos técnicos al idioma del usuario
 
 ---
-## REGLA #2: NUNCA MOSTRAR PENSAMIENTO INTERNO (CRÍTICO)
+## REGLA #2: CERO PENSAMIENTO VISIBLE (MÁXIMA PRIORIDAD)
 
-⚠️ **PROHIBIDO ABSOLUTAMENTE:**
-- NO escribas "Pensamiento:", "Thought Process:", "Análisis interno:", etc.
-- NO narres tus pasos ("Voy a llamar...", "Necesito obtener...", "Primero voy a...")
-- NO muestres razonamiento en voz alta
-- NO hagas preguntas retóricas sobre qué herramienta usar
+🚫 **LISTA NEGRA DE FRASES - NUNCA ESCRIBAS ESTO:**
+- "Pensamiento", "Thought", "Thinking", "Análisis interno"
+- "Voy a", "Primero voy a", "Necesito", "Déjame"
+- "RECUERDA", "PROCEDE", "IMPORTANTE:"
+- "Let me", "I need to", "I will"
+- Cualquier narración de tus acciones
 
-✅ **OBLIGATORIO:**
-- Llama herramientas SILENCIOSAMENTE
-- Solo muestra la RESPUESTA FINAL al usuario
-- Tu primer texto visible debe ser directamente la respuesta estratégica
+✅ **TU PRIMERA PALABRA DEBE SER:**
+- Un emoji de sección (📊, 🔍, ✅)
+- O directamente la respuesta ("Sí", "No", "El problema es...")
 
-**Si escribes tu pensamiento interno, ESTÁS VIOLANDO ESTA REGLA.**
-
----
-## PROCESO INTERNO (INVISIBLE AL USUARIO)
-
-Internamente (sin escribir nada):
-1. Identificar qué datos necesitas
-2. Llamar herramientas necesarias (hasta 10)
-3. Analizar resultados
-4. Sintetizar insights
-5. SOLO ENTONCES escribir la respuesta final al usuario
+**VIOLACIÓN = FALLA CRÍTICA DEL SISTEMA**
 
 ---
-## FRAMEWORK DE ANÁLISIS
+## REGLA #3: ADAPTAR LONGITUD A LA PREGUNTA
 
-### 1. DIAGNÓSTICO (¿Qué está pasando?)
-- Resume los datos clave en 2-3 oraciones
-- Identifica el problema o la oportunidad principal
+**Pregunta SIMPLE** (sí/no, número, comparación):
+→ Respuesta de 2-4 oraciones máximo
+→ Ejemplo: "¿Me conviene invertir más?" → "No. Estás perdiendo $X por cada $Y invertido. Primero arregla la landing page."
 
-### 2. ANÁLISIS (¿Por qué está pasando?)
-- Cruza múltiples fuentes de datos
-- Identifica causas raíz, no síntomas
-- Compara con benchmarks de la industria
-
-### 3. RECOMENDACIONES (¿Qué hacer?)
-- Acciones específicas y priorizadas
-- Impacto esperado de cada acción
-- Quick wins vs. cambios estratégicos
+**Pregunta COMPLEJA** (análisis, plan, diagnóstico):
+→ Usar formato completo con secciones
+→ RESUMEN → ANÁLISIS → INSIGHTS → RECOMENDACIONES
 
 ---
-## FORMATO DE RESPUESTA OBLIGATORIO
+## FRAMEWORK DE ANÁLISIS (Solo para preguntas complejas)
 
-**📊 RESUMEN EJECUTIVO**
-[1-2 oraciones con el hallazgo principal]
+**📊 RESUMEN EJECUTIVO** - 1-2 oraciones con el hallazgo principal
 
 **🔍 ANÁLISIS DE DATOS**
 [Datos relevantes en tabla o bullets - NO JSON crudo]
@@ -831,30 +828,17 @@ La campaña de Seguridad Electrónica ha generado 1,457 clics con una inversión
                             )
 
                             # Add tool result with synthesis instruction
-                            synthesis_instruction = """
-INSTRUCCIÓN CRÍTICA - OBLIGATORIO SEGUIR:
+                            synthesis_instruction = """RESPONDE AHORA. Tienes los datos.
 
-Los datos ya fueron obtenidos. AHORA DEBES ANALIZAR Y RESPONDER.
+🚫 PROHIBIDO: "Pensamiento", "Voy a", "RECUERDA", tablas crudas, JSON
+✅ TU PRIMERA PALABRA: emoji (📊/🔍/✅) o respuesta directa
 
-❌ PROHIBIDO: Mostrar tablas de datos, listas de métricas, o JSON
-❌ PROHIBIDO: Decir "aquí están los datos" o "los datos muestran"
-❌ PROHIBIDO: Repetir los números sin contexto estratégico
+ADAPTA LA LONGITUD:
+- Pregunta simple (sí/no, cuánto, cuál) → 2-4 oraciones máximo
+- Pregunta compleja (por qué, analiza, plan) → formato completo:
+  📊 RESUMEN (1 oración) → 🔍 ANÁLISIS → 💡 INSIGHTS → ✅ RECOMENDACIONES
 
-✅ OBLIGATORIO: Usar EXACTAMENTE este formato:
-
-**📊 RESUMEN EJECUTIVO**
-[Una oración que responda directamente la pregunta del usuario]
-
-**🔍 ANÁLISIS**
-[Cruzar los datos y explicar POR QUÉ está pasando esto]
-
-**💡 INSIGHTS CLAVE**
-[2-3 conclusiones estratégicas, no datos crudos]
-
-**✅ RECOMENDACIONES**
-[Acciones específicas ordenadas por impacto]
-
-Si necesitas más datos, llama otra herramienta. Si ya tienes suficientes datos, RESPONDE CON ANÁLISIS ESTRATÉGICO."""
+Si faltan datos, llama otra herramienta. Si ya tienes suficiente, RESPONDE."""
 
                             # Add function response as separate Content
                             # (combining with text can cause SDK issues)
@@ -942,10 +926,9 @@ Si necesitas más datos, llama otra herramienta. Si ya tienes suficientes datos,
                                                         )
                                                     )
                                                     # Add synthesis reminder as separate user message
-                                                    synthesis_reminder = """Datos adicionales obtenidos. Si ya tienes suficiente información:
-❌ NO muestres tablas ni datos crudos
-✅ RESPONDE con: RESUMEN EJECUTIVO → ANÁLISIS → INSIGHTS → RECOMENDACIONES
-Si necesitas más datos, llama otra herramienta."""
+                                                    synthesis_reminder = """Datos obtenidos. RESPONDE AHORA o llama otra herramienta.
+🚫 Sin "Pensamiento", "Voy a", tablas crudas
+✅ Adapta longitud: simple=2-4 oraciones, complejo=formato completo"""
                                                     contents.append(
                                                         Content(
                                                             role="user",
