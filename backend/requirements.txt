@@ -33,6 +33,8 @@ google-auth>=2.28.0
 google-analytics-data>=0.18.0
 google-analytics-admin>=0.22.0
 google-ads>=25.0.0
+# New Gen AI SDK (replaces vertexai.generative_models, deprecated June 2025)
+google-genai>=1.0.0
 
 # ─────────────────────────────────────────────────────────────────
 # Voice / Audio (STT & TTS)
