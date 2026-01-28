@@ -206,6 +206,43 @@ class GoogleAdsTool:
                     },
                     "required": ["campaign_id"]
                 }
+            },
+            {
+                "name": "google_ads_list_conversion_actions",
+                "description": "List all conversion actions configured in Google Ads. Use this to find the conversion action ID needed for offline conversion uploads.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "customer_id": {
+                            "type": "string",
+                            "description": "Google Ads customer ID (optional)"
+                        }
+                    },
+                    "required": []
+                }
+            },
+            {
+                "name": "google_ads_device_performance",
+                "description": "Get performance breakdown by device type (mobile, desktop, tablet). Critical for identifying device-specific issues.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "campaign_id": {
+                            "type": "string",
+                            "description": "Campaign ID (optional, gets all if not provided)"
+                        },
+                        "date_range": {
+                            "type": "string",
+                            "enum": ["LAST_7_DAYS", "LAST_14_DAYS", "LAST_30_DAYS", "THIS_MONTH", "LAST_MONTH"],
+                            "description": "Date range for metrics (default: LAST_30_DAYS)"
+                        },
+                        "customer_id": {
+                            "type": "string",
+                            "description": "Google Ads customer ID (optional)"
+                        }
+                    },
+                    "required": []
+                }
             }
         ]
 
@@ -251,6 +288,10 @@ class GoogleAdsTool:
                 return await self._keyword_performance(parameters)
             elif tool_name == "google_ads_search_terms":
                 return await self._search_terms(parameters)
+            elif tool_name == "google_ads_list_conversion_actions":
+                return await self._list_conversion_actions(parameters)
+            elif tool_name == "google_ads_device_performance":
+                return await self._device_performance(parameters)
             else:
                 return {"error": f"Unknown tool: {tool_name}"}
         except GoogleAdsException as ex:
@@ -805,6 +846,196 @@ class GoogleAdsTool:
             "date_range": date_range,
             "search_term_count": len(search_terms),
             "search_terms": search_terms
+        }
+
+    async def _list_conversion_actions(self, parameters: dict[str, Any]) -> dict[str, Any]:
+        """List all conversion actions configured in the account."""
+        # Use configured client accounts if available
+        if self._client_accounts:
+            customer_ids = self._client_accounts
+        else:
+            customer_id = self._get_customer_id(parameters)
+            if not customer_id:
+                return {"error": "Customer ID is required"}
+            customer_ids = [customer_id]
+
+        query = """
+            SELECT
+                conversion_action.id,
+                conversion_action.name,
+                conversion_action.type,
+                conversion_action.status,
+                conversion_action.category,
+                conversion_action.counting_type
+            FROM conversion_action
+            WHERE conversion_action.status = 'ENABLED'
+        """
+
+        logger.info("Listing conversion actions")
+
+        ga_service = self.client.get_service("GoogleAdsService")
+
+        all_actions = []
+        errors = []
+
+        for cid in customer_ids:
+            try:
+                response = ga_service.search(customer_id=cid, query=query)
+
+                for row in response:
+                    all_actions.append({
+                        "id": str(row.conversion_action.id),
+                        "name": row.conversion_action.name,
+                        "type": row.conversion_action.type_.name,
+                        "status": row.conversion_action.status.name,
+                        "category": row.conversion_action.category.name,
+                        "counting_type": row.conversion_action.counting_type.name,
+                        "customer_id": cid,
+                    })
+            except GoogleAdsException as e:
+                error_msg = e.failure.errors[0].message if e.failure.errors else str(e)
+                errors.append(f"Account {cid}: {error_msg[:100]}")
+            except Exception as e:
+                errors.append(f"Account {cid}: {str(e)[:100]}")
+
+        return {
+            "success": len(all_actions) > 0,
+            "conversion_action_count": len(all_actions),
+            "conversion_actions": all_actions,
+            "offline_conversion_setup": {
+                "para_subir_conversiones_offline": [
+                    "1. Usa una de las conversion_action anteriores (o crea una nueva en Google Ads)",
+                    "2. Captura el gclid en tu formulario de contacto",
+                    "3. Guarda gclid junto con los datos del lead",
+                    "4. Usa la API de conversiones offline para subir las conversiones",
+                ],
+                "javascript_para_capturar_gclid": "const gclid = new URLSearchParams(window.location.search).get('gclid');",
+                "nota": "Sin gclid NO puedes subir conversiones offline"
+            },
+            "errors": errors if errors else None
+        }
+
+    async def _device_performance(self, parameters: dict[str, Any]) -> dict[str, Any]:
+        """Get performance breakdown by device type."""
+        campaign_id = parameters.get("campaign_id")
+        date_range = parameters.get("date_range", "LAST_30_DAYS")
+
+        # Use configured client accounts if available
+        if self._client_accounts:
+            customer_ids = self._client_accounts
+        else:
+            customer_id = self._get_customer_id(parameters)
+            if not customer_id:
+                return {"error": "Customer ID is required"}
+            customer_ids = [customer_id]
+
+        query = f"""
+            SELECT
+                campaign.id,
+                campaign.name,
+                segments.device,
+                metrics.impressions,
+                metrics.clicks,
+                metrics.cost_micros,
+                metrics.conversions,
+                metrics.ctr,
+                metrics.average_cpc
+            FROM campaign
+            WHERE segments.date DURING {date_range}
+        """
+
+        if campaign_id:
+            query += f" AND campaign.id = {campaign_id}"
+
+        query += " ORDER BY metrics.impressions DESC"
+
+        logger.info("Getting device performance", campaign_id=campaign_id)
+
+        ga_service = self.client.get_service("GoogleAdsService")
+
+        all_data = []
+        errors = []
+
+        for cid in customer_ids:
+            try:
+                response = ga_service.search(customer_id=cid, query=query)
+
+                for row in response:
+                    all_data.append({
+                        "campaign_id": str(row.campaign.id),
+                        "campaign_name": row.campaign.name,
+                        "device": row.segments.device.name,
+                        "impressions": row.metrics.impressions,
+                        "clicks": row.metrics.clicks,
+                        "cost": round(row.metrics.cost_micros / 1_000_000, 2),
+                        "conversions": row.metrics.conversions,
+                        "ctr": round(row.metrics.ctr * 100, 2) if row.metrics.ctr else 0,
+                        "avg_cpc": round(row.metrics.average_cpc / 1_000_000, 2) if row.metrics.average_cpc else 0,
+                        "customer_id": cid,
+                    })
+            except GoogleAdsException as e:
+                error_msg = e.failure.errors[0].message if e.failure.errors else str(e)
+                errors.append(f"Account {cid}: {error_msg[:100]}")
+            except Exception as e:
+                errors.append(f"Account {cid}: {str(e)[:100]}")
+
+        # Aggregate by device
+        device_totals = {}
+        for row in all_data:
+            device = row["device"]
+            if device not in device_totals:
+                device_totals[device] = {
+                    "impressions": 0,
+                    "clicks": 0,
+                    "cost": 0,
+                    "conversions": 0,
+                }
+            device_totals[device]["impressions"] += row["impressions"]
+            device_totals[device]["clicks"] += row["clicks"]
+            device_totals[device]["cost"] += row["cost"]
+            device_totals[device]["conversions"] += row["conversions"]
+
+        # Calculate percentages and CTR
+        total_clicks = sum(d["clicks"] for d in device_totals.values())
+        total_impressions = sum(d["impressions"] for d in device_totals.values())
+
+        summary = []
+        for device, data in device_totals.items():
+            click_pct = (data["clicks"] / total_clicks * 100) if total_clicks > 0 else 0
+            ctr = (data["clicks"] / data["impressions"] * 100) if data["impressions"] > 0 else 0
+            conv_rate = (data["conversions"] / data["clicks"] * 100) if data["clicks"] > 0 else 0
+
+            summary.append({
+                "device": device,
+                "impressions": data["impressions"],
+                "clicks": data["clicks"],
+                "click_percentage": f"{click_pct:.1f}%",
+                "cost": f"${data['cost']:,.2f}",
+                "conversions": data["conversions"],
+                "ctr": f"{ctr:.2f}%",
+                "conversion_rate": f"{conv_rate:.2f}%",
+            })
+
+        # Sort by clicks descending
+        summary.sort(key=lambda x: x["clicks"], reverse=True)
+
+        # Identify potential issues
+        insights = []
+        for s in summary:
+            if s["device"] == "MOBILE" and float(s["click_percentage"].replace("%", "")) > 80:
+                if s["conversions"] == 0:
+                    insights.append(f"⚠️ CRÍTICO: {s['click_percentage']} del tráfico es móvil pero tiene {s['conversions']} conversiones. Revisar landing móvil.")
+                elif float(s["conversion_rate"].replace("%", "")) < 1:
+                    insights.append(f"⚠️ El tráfico móvil ({s['click_percentage']}) tiene conversión muy baja ({s['conversion_rate']}). Optimizar landing móvil.")
+
+        return {
+            "success": True,
+            "date_range": date_range,
+            "campaign_id": campaign_id,
+            "device_summary": summary,
+            "detailed_data": all_data[:50],
+            "insights": insights if insights else ["✅ Distribución de dispositivos normal"],
+            "errors": errors if errors else None
         }
 
 

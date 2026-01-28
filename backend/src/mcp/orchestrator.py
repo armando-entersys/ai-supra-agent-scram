@@ -37,6 +37,7 @@ from src.mcp.knowledge_base import KnowledgeBaseTool
 from src.mcp.web_search import get_web_search_tool, WebSearchTool
 from src.mcp.bigquery import get_bigquery_tool, BigQueryTool
 from src.mcp.autonomous_agent import get_data_discovery, get_autonomous_analyzer
+from src.mcp.leads_tool import get_leads_tool, LeadsTool
 from src.mcp.benchmarks import (
     get_benchmarks_for_campaign,
     compare_to_benchmark,
@@ -322,6 +323,7 @@ class AgentOrchestrator:
         self.ads_tool = get_google_ads_tool()  # May be None if not configured
         self.web_tool = get_web_search_tool()  # Web search tool
         self.bq_tool = get_bigquery_tool()  # BigQuery for advanced analytics
+        self.leads_tool = get_leads_tool()  # CRM/Leads data from CSV
 
         # Initialize memory and alerts (may be None if BigQuery not available)
         self.memory = get_agent_memory()
@@ -474,9 +476,20 @@ Usa estos benchmarks para contextualizar el rendimiento del cliente.
 - `bq_run_query` - Ejecutar consultas SQL personalizadas
 - `bq_export_google_ads` - Exportar datos de Google Ads a BigQuery
 
+**CRM/Leads (DATOS REALES):**
+- `leads_get_summary` - Resumen del dashboard de leads REALES
+- `leads_by_source` - Leads agrupados por fuente (Ads, Espectacular, etc.)
+- `leads_by_status` - Pipeline de ventas por etapa
+- `leads_from_google_ads` - CRÍTICO: Leads REALES de Google Ads (compara con lo que reporta Ads)
+- `leads_pipeline_value` - Valor monetario del pipeline
+
 **Otros:**
 - `search_knowledge_base` - Documentos internos SCRAM
 - `web_search` - Búsqueda en internet para benchmarks
+
+**⚠️ DISCREPANCIA DE TRACKING:**
+Google Ads reporta ~1 conversión, pero el CRM tiene 25+ leads de Ads.
+Cuando analices ROI o conversiones, SIEMPRE compara datos de Ads con `leads_from_google_ads`.
 
 **REGLAS CRÍTICAS DE HERRAMIENTAS:**
 1. NUNCA uses `google_ads_search` con GAQL - las queries fallan. Usa las herramientas específicas.
@@ -563,6 +576,12 @@ La campaña de Seguridad Electrónica ha generado 1,457 clics con una inversión
             function_declarations.extend(bq_functions)
             logger.info("BigQuery tool enabled")
 
+        # Leads/CRM tool for cross-referencing with Ads data
+        if self.leads_tool:
+            leads_functions = self.leads_tool.get_function_declarations()
+            function_declarations.extend(leads_functions)
+            logger.info("Leads tool enabled", csv_path=self.leads_tool.csv_path)
+
         return [Tool(function_declarations=function_declarations)]
 
     async def _execute_tool_with_retry(
@@ -644,6 +663,8 @@ La campaña de Seguridad Electrónica ha generado 1,457 clics con una inversión
                 result = await self.web_tool.execute(tool_name, tool_args)
             elif tool_name.startswith("bq_") and self.bq_tool:
                 result = await self.bq_tool.execute(tool_name, tool_args)
+            elif tool_name.startswith("leads_") and self.leads_tool:
+                result = self.leads_tool.execute(tool_name, tool_args)
             else:
                 result = {"error": f"Herramienta desconocida: {tool_name}"}
 

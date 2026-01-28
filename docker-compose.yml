@@ -68,6 +68,9 @@ services:
       - GOOGLE_ADS_REFRESH_TOKEN=${GOOGLE_ADS_REFRESH_TOKEN:-}
       - GOOGLE_ADS_LOGIN_CUSTOMER_ID=${GOOGLE_ADS_LOGIN_CUSTOMER_ID:-}
       - GOOGLE_ADS_CONFIG_PATH=${GOOGLE_ADS_CONFIG_PATH:-}
+      # Google Custom Search (for web search tool)
+      - GOOGLE_SEARCH_API_KEY=${GOOGLE_SEARCH_API_KEY:-}
+      - GOOGLE_SEARCH_ENGINE_ID=${GOOGLE_SEARCH_ENGINE_ID:-}
     volumes:
       - ./secrets/gcp-sa-key.json:/app/secrets/gcp-sa-key.json:ro
       - uploads_data:/app/uploads
