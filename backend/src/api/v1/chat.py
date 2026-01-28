@@ -21,6 +21,7 @@ from src.database.models import ChatMessage, ChatSession
 from src.mcp.orchestrator import AgentOrchestrator
 from src.mcp.alerts import get_campaign_alerts, format_alerts_for_display
 from src.mcp.memory import get_agent_memory
+from src.config import get_settings
 from src.schemas.chat import (
     ChatMessageCreate,
     ChatMessageResponse,
@@ -274,7 +275,16 @@ async def stream_chat(
 
     async def generate() -> AsyncGenerator[str, None]:
         """Generate SSE events for chat stream."""
-        orchestrator = AgentOrchestrator()
+        settings = get_settings()
+
+        # Use new Gen AI SDK if enabled
+        if settings.use_genai_sdk:
+            from src.mcp.orchestrator_genai import get_genai_orchestrator
+            orchestrator = get_genai_orchestrator()
+            logger.info("Using Gen AI SDK orchestrator")
+        else:
+            orchestrator = AgentOrchestrator()
+
         full_response = ""
         tool_calls_data: list[dict] = []
 

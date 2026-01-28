@@ -66,6 +66,10 @@ class Settings(BaseSettings):
         str,
         Field(default="gemini-3-pro-preview", description="Gemini 3 Pro - most advanced reasoning model"),
     ]
+    use_genai_sdk: Annotated[
+        bool,
+        Field(default=False, description="Use new google-genai SDK instead of vertexai (experimental)"),
+    ]
 
     # ─────────────────────────────────────────────────────────────
     # Google Custom Search (for web search)
