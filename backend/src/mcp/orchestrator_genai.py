@@ -310,18 +310,17 @@ PRINCIPIOS:
                     if function_calls:
                         # But if we already have a complete response, don't make more tool calls
                         combined_text = "".join(text_parts).lower()
-                        # Check for multiple completion indicators
+                        # Check for multiple completion indicators (ASCII-safe)
                         completion_indicators = [
-                            "recomendacion", "recommendation",
-                            "resumen", "summary",
-                            "conclusi", "conclusion",
+                            "recomendacion", "recommendation", "accion inmediata",
+                            "resumen", "summary", "respuesta corta",
+                            "conclusi", "conclusion", "en resumen",
+                            "insight", "analisis", "analysis",
                         ]
                         has_completion = any(ind in combined_text for ind in completion_indicators)
-                        # Also check for emoji markers commonly used in conclusions
-                        has_emoji_marker = "✅" in "".join(text_parts) or "📊" in "".join(text_parts)
 
-                        # Stop if: substantial text (>500) with completion indicator OR very long (>1000)
-                        if (total_text_emitted > 500 and (has_completion or has_emoji_marker)) or total_text_emitted > 1200:
+                        # Stop if: substantial text (>400) with completion indicator OR >800 chars total
+                        if (total_text_emitted > 400 and has_completion) or total_text_emitted > 800:
                             logger.info("Complete response detected, skipping additional tool calls",
                                        text_length=total_text_emitted, has_completion=has_completion)
                             break
