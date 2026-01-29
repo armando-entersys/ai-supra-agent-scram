@@ -280,58 +280,71 @@ PRINCIPIOS:
                 # Check for function calls
                 if response.candidates and response.candidates[0].content.parts:
                     has_function_call = False
+                    has_text = False
+                    text_parts = []
+                    function_calls = []
 
+                    # First pass: categorize all parts
                     for part in response.candidates[0].content.parts:
-                        # Check if this part has a function call
                         if hasattr(part, 'function_call') and part.function_call:
-                            has_function_call = True
-                            fc = part.function_call
-                            tool_name = fc.name
-                            tool_args = dict(fc.args) if fc.args else {}
-
-                            # Emit tool call event
-                            yield {
-                                "type": "tool_call",
-                                "data": {
-                                    "tool_name": tool_name,
-                                    "tool_input": tool_args,
-                                    "status": "running",
-                                },
-                            }
-
-                            # Execute tool
-                            result = await self._execute_tool(tool_name, tool_args)
-                            total_tool_calls += 1
-
-                            # Emit result
-                            yield {
-                                "type": "tool_call",
-                                "data": {
-                                    "tool_name": tool_name,
-                                    "tool_input": tool_args,
-                                    "status": "completed",
-                                    "result": result,
-                                },
-                            }
-
-                            # Add model response and tool result to contents
-                            contents.append(response.candidates[0].content)
-                            contents.append(types.Content(
-                                role="user",
-                                parts=[types.Part.from_function_response(
-                                    name=tool_name,
-                                    response=_serialize_result(result),
-                                )]
-                            ))
-
-                            break  # Process one function call at a time
-
-                        # If text part, emit it
+                            function_calls.append(part.function_call)
                         elif hasattr(part, 'text') and part.text:
-                            yield {"type": "text", "content": part.text}
+                            text_parts.append(part.text)
 
-                    if not has_function_call:
-                        # No more function calls, we're done
+                    # Emit all text parts first
+                    for text in text_parts:
+                        yield {"type": "text", "content": text}
+                        has_text = True
+
+                    # If there are function calls, process them
+                    if function_calls:
+                        has_function_call = True
+                        fc = function_calls[0]  # Process first function call
+                        tool_name = fc.name
+                        tool_args = dict(fc.args) if fc.args else {}
+
+                        # Emit tool call event
+                        yield {
+                            "type": "tool_call",
+                            "data": {
+                                "tool_name": tool_name,
+                                "tool_input": tool_args,
+                                "status": "running",
+                            },
+                        }
+
+                        # Execute tool
+                        result = await self._execute_tool(tool_name, tool_args)
+                        total_tool_calls += 1
+
+                        # Emit result
+                        yield {
+                            "type": "tool_call",
+                            "data": {
+                                "tool_name": tool_name,
+                                "tool_input": tool_args,
+                                "status": "completed",
+                                "result": result,
+                            },
+                        }
+
+                        # Add model response and tool result to contents
+                        contents.append(response.candidates[0].content)
+                        contents.append(types.Content(
+                            role="user",
+                            parts=[types.Part.from_function_response(
+                                name=tool_name,
+                                response=_serialize_result(result),
+                            )]
+                        ))
+                        # Continue loop to get model's response to tool result
+
+                    # If we had text but no function calls, we're done
+                    if has_text and not has_function_call:
+                        break
+
+                    # If no function calls and no text, we're done
+                    if not has_function_call and not has_text:
                         break
                 else:
                     # No content, we're done
