@@ -267,6 +267,7 @@ PRINCIPIOS:
             # Generate with streaming
             total_tool_calls = 0
             max_iterations = 10
+            total_text_emitted = 0  # Track total text length to detect complete responses
 
             for iteration in range(max_iterations):
                 logger.info("Generating response", iteration=iteration)
@@ -279,8 +280,6 @@ PRINCIPIOS:
 
                 # Check for function calls
                 if response.candidates and response.candidates[0].content.parts:
-                    has_function_call = False
-                    has_text = False
                     text_parts = []
                     function_calls = []
 
@@ -291,14 +290,31 @@ PRINCIPIOS:
                         elif hasattr(part, 'text') and part.text:
                             text_parts.append(part.text)
 
-                    # Emit all text parts first
+                    # Calculate total text in this response
+                    response_text_length = sum(len(t) for t in text_parts)
+
+                    # If we have substantial text (>400 chars) and have already emitted text,
+                    # this is likely a repeated/redundant response - stop
+                    if total_text_emitted > 400 and response_text_length > 200:
+                        logger.info("Stopping loop - already have substantial response",
+                                   total_emitted=total_text_emitted, new_length=response_text_length)
+                        break
+
+                    # Emit all text parts
                     for text in text_parts:
                         yield {"type": "text", "content": text}
-                        has_text = True
+                        total_text_emitted += len(text)
 
                     # If there are function calls, process them
                     if function_calls:
-                        has_function_call = True
+                        # But if we already have a complete response (>600 chars with recommendations),
+                        # don't make more tool calls - we're done
+                        combined_text = "".join(text_parts).lower()
+                        if total_text_emitted > 600 and ("recomendacion" in combined_text or "✅" in combined_text):
+                            logger.info("Complete response detected, skipping additional tool calls",
+                                       text_length=total_text_emitted)
+                            break
+
                         fc = function_calls[0]  # Process first function call
                         tool_name = fc.name
                         tool_args = dict(fc.args) if fc.args else {}
@@ -340,11 +356,11 @@ PRINCIPIOS:
                         # Continue loop to get model's response to tool result
 
                     # If we had text but no function calls, we're done
-                    if has_text and not has_function_call:
+                    elif text_parts:
                         break
 
                     # If no function calls and no text, we're done
-                    if not has_function_call and not has_text:
+                    else:
                         break
                 else:
                     # No content, we're done
