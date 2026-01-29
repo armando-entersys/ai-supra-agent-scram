@@ -268,9 +268,11 @@ PRINCIPIOS:
             total_tool_calls = 0
             max_iterations = 10
             total_text_emitted = 0  # Track total text length to detect complete responses
+            text_response_count = 0  # Track how many times we've emitted text
 
             for iteration in range(max_iterations):
-                logger.info("Generating response", iteration=iteration)
+                logger.info("Generating response", iteration=iteration,
+                           text_emitted=total_text_emitted, text_responses=text_response_count)
 
                 response = self.client.models.generate_content(
                     model=self.model_name,
@@ -293,38 +295,22 @@ PRINCIPIOS:
                     # Calculate total text in this response
                     response_text_length = sum(len(t) for t in text_parts)
 
-                    # If we have substantial text and the model is generating more substantial text,
-                    # this is likely a repeated/redundant response - stop
-                    # Lower thresholds to catch duplicates earlier
-                    if total_text_emitted > 300 and response_text_length > 150:
-                        logger.info("Stopping loop - already have substantial response",
-                                   total_emitted=total_text_emitted, new_length=response_text_length)
+                    # SIMPLE RULE: If we already emitted one text response, stop
+                    # This prevents the model from regenerating after tool calls
+                    if text_response_count > 0 and response_text_length > 100:
+                        logger.info("Stopping - already have a text response",
+                                   previous_responses=text_response_count)
                         break
 
                     # Emit all text parts
-                    for text in text_parts:
-                        yield {"type": "text", "content": text}
-                        total_text_emitted += len(text)
+                    if text_parts:
+                        for text in text_parts:
+                            yield {"type": "text", "content": text}
+                            total_text_emitted += len(text)
+                        text_response_count += 1
 
-                    # If there are function calls, process them
-                    if function_calls:
-                        # But if we already have a complete response, don't make more tool calls
-                        combined_text = "".join(text_parts).lower()
-                        # Check for multiple completion indicators (ASCII-safe)
-                        completion_indicators = [
-                            "recomendacion", "recommendation", "accion inmediata",
-                            "resumen", "summary", "respuesta corta",
-                            "conclusi", "conclusion", "en resumen",
-                            "insight", "analisis", "analysis",
-                        ]
-                        has_completion = any(ind in combined_text for ind in completion_indicators)
-
-                        # Stop if: substantial text (>400) with completion indicator OR >800 chars total
-                        if (total_text_emitted > 400 and has_completion) or total_text_emitted > 800:
-                            logger.info("Complete response detected, skipping additional tool calls",
-                                       text_length=total_text_emitted, has_completion=has_completion)
-                            break
-
+                    # If there are function calls AND we haven't emitted text yet, process them
+                    if function_calls and text_response_count == 0:
                         fc = function_calls[0]  # Process first function call
                         tool_name = fc.name
                         tool_args = dict(fc.args) if fc.args else {}
@@ -365,8 +351,10 @@ PRINCIPIOS:
                         ))
                         # Continue loop to get model's response to tool result
 
-                    # If we had text but no function calls, we're done
+                    # If we emitted text (with or without function calls), we're done
                     elif text_parts:
+                        logger.info("Text response complete, stopping loop",
+                                   text_length=total_text_emitted)
                         break
 
                     # If no function calls and no text, we're done
