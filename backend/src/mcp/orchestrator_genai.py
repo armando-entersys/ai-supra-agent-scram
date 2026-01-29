@@ -316,47 +316,55 @@ PRINCIPIOS:
                                    text_length=total_text_emitted)
                         break
 
-                    # If there are function calls (and NO text), process them
+                    # If there are function calls (and NO text), process ALL of them
+                    # Gen AI SDK requires response to ALL function calls in a turn
                     if function_calls:
-                        fc = function_calls[0]  # Process first function call
-                        tool_name = fc.name
-                        tool_args = dict(fc.args) if fc.args else {}
+                        function_response_parts = []
 
-                        # Emit tool call event
-                        yield {
-                            "type": "tool_call",
-                            "data": {
-                                "tool_name": tool_name,
-                                "tool_input": tool_args,
-                                "status": "running",
-                            },
-                        }
+                        for fc in function_calls:
+                            tool_name = fc.name
+                            tool_args = dict(fc.args) if fc.args else {}
 
-                        # Execute tool
-                        result = await self._execute_tool(tool_name, tool_args)
-                        total_tool_calls += 1
+                            # Emit tool call running event
+                            yield {
+                                "type": "tool_call",
+                                "data": {
+                                    "tool_name": tool_name,
+                                    "tool_input": tool_args,
+                                    "status": "running",
+                                },
+                            }
 
-                        # Emit result
-                        yield {
-                            "type": "tool_call",
-                            "data": {
-                                "tool_name": tool_name,
-                                "tool_input": tool_args,
-                                "status": "completed",
-                                "result": result,
-                            },
-                        }
+                            # Execute tool
+                            result = await self._execute_tool(tool_name, tool_args)
+                            total_tool_calls += 1
 
-                        # Add model response and tool result to contents
+                            # Emit tool call completed event
+                            yield {
+                                "type": "tool_call",
+                                "data": {
+                                    "tool_name": tool_name,
+                                    "tool_input": tool_args,
+                                    "status": "completed",
+                                    "result": result,
+                                },
+                            }
+
+                            # Collect function response part
+                            function_response_parts.append(
+                                types.Part.from_function_response(
+                                    name=tool_name,
+                                    response=_serialize_result(result),
+                                )
+                            )
+
+                        # Add model response and ALL tool results to contents
                         contents.append(response.candidates[0].content)
                         contents.append(types.Content(
                             role="user",
-                            parts=[types.Part.from_function_response(
-                                name=tool_name,
-                                response=_serialize_result(result),
-                            )]
+                            parts=function_response_parts
                         ))
-                        # Continue loop to get model's response to tool result
+                        # Continue loop to get model's response to tool results
                     else:
                         # No text and no function calls - we're done
                         break
