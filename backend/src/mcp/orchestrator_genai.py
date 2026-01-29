@@ -143,10 +143,14 @@ PRINCIPIOS:
 
         # Helper to convert legacy FunctionDeclaration to dict
         def convert_declaration(fd) -> dict:
+            # Use to_dict() if available (vertexai FunctionDeclaration)
+            if hasattr(fd, 'to_dict'):
+                return fd.to_dict()
+            # Fallback for other types
             return {
-                "name": fd.name,
-                "description": fd.description,
-                "parameters": fd.parameters if hasattr(fd, 'parameters') else {},
+                "name": getattr(fd, 'name', fd._raw_function_declaration.name if hasattr(fd, '_raw_function_declaration') else 'unknown'),
+                "description": getattr(fd, 'description', fd._raw_function_declaration.description if hasattr(fd, '_raw_function_declaration') else ''),
+                "parameters": getattr(fd, 'parameters', {}),
             }
 
         # Google Analytics
