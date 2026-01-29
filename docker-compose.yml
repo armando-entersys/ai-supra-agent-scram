@@ -71,6 +71,8 @@ services:
       # Google Custom Search (for web search tool)
       - GOOGLE_SEARCH_API_KEY=${GOOGLE_SEARCH_API_KEY:-}
       - GOOGLE_SEARCH_ENGINE_ID=${GOOGLE_SEARCH_ENGINE_ID:-}
+      # Gen AI SDK (new orchestrator)
+      - USE_GENAI_SDK=true
     volumes:
       - ./secrets/gcp-sa-key.json:/app/secrets/gcp-sa-key.json:ro
       - uploads_data:/app/uploads
