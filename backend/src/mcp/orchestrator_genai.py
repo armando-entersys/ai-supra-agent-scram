@@ -293,9 +293,10 @@ PRINCIPIOS:
                     # Calculate total text in this response
                     response_text_length = sum(len(t) for t in text_parts)
 
-                    # If we have substantial text (>400 chars) and have already emitted text,
+                    # If we have substantial text and the model is generating more substantial text,
                     # this is likely a repeated/redundant response - stop
-                    if total_text_emitted > 400 and response_text_length > 200:
+                    # Lower thresholds to catch duplicates earlier
+                    if total_text_emitted > 300 and response_text_length > 150:
                         logger.info("Stopping loop - already have substantial response",
                                    total_emitted=total_text_emitted, new_length=response_text_length)
                         break
@@ -307,12 +308,22 @@ PRINCIPIOS:
 
                     # If there are function calls, process them
                     if function_calls:
-                        # But if we already have a complete response (>600 chars with recommendations),
-                        # don't make more tool calls - we're done
+                        # But if we already have a complete response, don't make more tool calls
                         combined_text = "".join(text_parts).lower()
-                        if total_text_emitted > 600 and ("recomendacion" in combined_text or "✅" in combined_text):
+                        # Check for multiple completion indicators
+                        completion_indicators = [
+                            "recomendacion", "recommendation",
+                            "resumen", "summary",
+                            "conclusi", "conclusion",
+                        ]
+                        has_completion = any(ind in combined_text for ind in completion_indicators)
+                        # Also check for emoji markers commonly used in conclusions
+                        has_emoji_marker = "✅" in "".join(text_parts) or "📊" in "".join(text_parts)
+
+                        # Stop if: substantial text (>500) with completion indicator OR very long (>1000)
+                        if (total_text_emitted > 500 and (has_completion or has_emoji_marker)) or total_text_emitted > 1200:
                             logger.info("Complete response detected, skipping additional tool calls",
-                                       text_length=total_text_emitted)
+                                       text_length=total_text_emitted, has_completion=has_completion)
                             break
 
                         fc = function_calls[0]  # Process first function call
