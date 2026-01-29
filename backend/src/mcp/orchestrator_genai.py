@@ -302,15 +302,18 @@ PRINCIPIOS:
                                    previous_responses=text_response_count)
                         break
 
-                    # Emit all text parts
+                    # Emit all text parts and STOP if we have any text
                     if text_parts:
                         for text in text_parts:
                             yield {"type": "text", "content": text}
                             total_text_emitted += len(text)
-                        text_response_count += 1
+                        # Once we emit text, we're DONE - don't process any more tool calls
+                        logger.info("Text response emitted, stopping loop",
+                                   text_length=total_text_emitted)
+                        break
 
-                    # If there are function calls AND we haven't emitted text yet, process them
-                    if function_calls and text_response_count == 0:
+                    # If there are function calls (and NO text), process them
+                    if function_calls:
                         fc = function_calls[0]  # Process first function call
                         tool_name = fc.name
                         tool_args = dict(fc.args) if fc.args else {}
@@ -350,15 +353,8 @@ PRINCIPIOS:
                             )]
                         ))
                         # Continue loop to get model's response to tool result
-
-                    # If we emitted text (with or without function calls), we're done
-                    elif text_parts:
-                        logger.info("Text response complete, stopping loop",
-                                   text_length=total_text_emitted)
-                        break
-
-                    # If no function calls and no text, we're done
                     else:
+                        # No text and no function calls - we're done
                         break
                 else:
                     # No content, we're done
