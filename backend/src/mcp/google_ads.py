@@ -4,6 +4,7 @@ Provides tools to query Google Ads campaigns, ad groups, ads, and metrics
 using the Google Ads API via GAQL (Google Ads Query Language).
 """
 
+import asyncio
 import json
 import structlog
 from typing import Any
@@ -90,15 +91,10 @@ class GoogleAdsTool:
             },
             {
                 "name": "google_ads_list_campaigns",
-                "description": "List all campaigns with their status, budget, and key metrics for the last 30 days.",
+                "description": "List active campaigns with their budget and key metrics for the last 30 days. Only returns ENABLED campaigns.",
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "status_filter": {
-                            "type": "string",
-                            "enum": ["ALL", "ENABLED", "PAUSED", "REMOVED"],
-                            "description": "Filter campaigns by status (default: ALL)"
-                        },
                         "customer_id": {
                             "type": "string",
                             "description": "Google Ads customer ID (optional)"
@@ -465,7 +461,8 @@ class GoogleAdsTool:
 
         Uses configured client accounts if available, otherwise discovers them.
         """
-        status_filter = parameters.get("status_filter", "ALL")
+        # Always filter to ENABLED campaigns only - no need for inactive ones
+        status_filter = "ENABLED"
 
         logger.info("Listing campaigns", status_filter=status_filter)
 
@@ -537,20 +534,29 @@ class GoogleAdsTool:
         accounts_queried = []
         errors = []
 
-        for client_id in client_accounts:
-            try:
-                campaigns = await self._list_campaigns_for_customer(
-                    client_id, status_filter, ga_service
-                )
+        # Query all client accounts in PARALLEL for speed
+        async def _query_account(client_id: str):
+            return client_id, await self._list_campaigns_for_customer(
+                client_id, status_filter, ga_service
+            )
+
+        tasks = [_query_account(cid) for cid in client_accounts]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        for i, result in enumerate(results):
+            client_id = client_accounts[i]
+            if isinstance(result, Exception):
+                if isinstance(result, GoogleAdsException):
+                    error_msg = result.failure.errors[0].message if result.failure.errors else str(result)
+                else:
+                    error_msg = str(result)
+                errors.append({"customer_id": client_id, "error": error_msg})
+                logger.warning("Failed to get campaigns from client", client_id=client_id, error=error_msg)
+            else:
+                _, campaigns = result
                 all_campaigns.extend(campaigns)
                 accounts_queried.append(client_id)
                 logger.info("Got campaigns from client", client_id=client_id, count=len(campaigns))
-            except GoogleAdsException as ex:
-                error_msg = ex.failure.errors[0].message if ex.failure.errors else str(ex)
-                errors.append({"customer_id": client_id, "error": error_msg})
-                logger.warning("Failed to get campaigns from client", client_id=client_id, error=error_msg)
-            except Exception as e:
-                errors.append({"customer_id": client_id, "error": str(e)})
                 logger.warning("Unexpected error getting campaigns", client_id=client_id, error=str(e))
 
         # Sort by impressions

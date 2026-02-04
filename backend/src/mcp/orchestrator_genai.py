@@ -10,6 +10,7 @@ Key differences from legacy orchestrator:
 - Can use automatic function calling (disabled for our use case)
 """
 
+import asyncio
 import json
 import os
 from datetime import datetime
@@ -316,16 +317,15 @@ PRINCIPIOS:
                                    text_length=total_text_emitted)
                         break
 
-                    # If there are function calls (and NO text), process ALL of them
+                    # If there are function calls (and NO text), process ALL in PARALLEL
                     # Gen AI SDK requires response to ALL function calls in a turn
                     if function_calls:
-                        function_response_parts = []
-
+                        # Emit all "running" events first
+                        call_info = []
                         for fc in function_calls:
                             tool_name = fc.name
                             tool_args = dict(fc.args) if fc.args else {}
-
-                            # Emit tool call running event
+                            call_info.append((tool_name, tool_args))
                             yield {
                                 "type": "tool_call",
                                 "data": {
@@ -335,11 +335,19 @@ PRINCIPIOS:
                                 },
                             }
 
-                            # Execute tool
-                            result = await self._execute_tool(tool_name, tool_args)
-                            total_tool_calls += 1
+                        # Execute ALL tools in parallel
+                        tasks = [
+                            self._execute_tool(name, args)
+                            for name, args in call_info
+                        ]
+                        results = await asyncio.gather(*tasks, return_exceptions=True)
 
-                            # Emit tool call completed event
+                        # Emit completed events and collect response parts
+                        function_response_parts = []
+                        for (tool_name, tool_args), result in zip(call_info, results):
+                            if isinstance(result, Exception):
+                                result = {"error": str(result)}
+                            total_tool_calls += 1
                             yield {
                                 "type": "tool_call",
                                 "data": {
@@ -349,8 +357,6 @@ PRINCIPIOS:
                                     "result": result,
                                 },
                             }
-
-                            # Collect function response part
                             function_response_parts.append(
                                 types.Part.from_function_response(
                                     name=tool_name,
