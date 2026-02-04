@@ -71,6 +71,8 @@ services:
       # Google Custom Search (for web search tool)
       - GOOGLE_SEARCH_API_KEY=${GOOGLE_SEARCH_API_KEY:-}
       - GOOGLE_SEARCH_ENGINE_ID=${GOOGLE_SEARCH_ENGINE_ID:-}
+      # Gemini model
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3-pro-preview}
       # Gen AI SDK (new orchestrator)
       - USE_GENAI_SDK=true
     volumes:
