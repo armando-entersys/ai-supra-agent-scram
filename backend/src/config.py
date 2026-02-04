@@ -64,7 +64,7 @@ class Settings(BaseSettings):
     # ─────────────────────────────────────────────────────────────
     gemini_model: Annotated[
         str,
-        Field(default="gemini-3-pro-preview", description="Gemini 3 Pro - most advanced reasoning model"),
+        Field(default="gemini-2.0-flash", description="Gemini 2.0 Flash - fast model optimized for tool use"),
     ]
     use_genai_sdk: Annotated[
         bool,
