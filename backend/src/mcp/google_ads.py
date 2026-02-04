@@ -425,10 +425,13 @@ class GoogleAdsTool:
 
         query += " ORDER BY metrics.impressions DESC LIMIT 50"
 
-        response = ga_service.search(customer_id=customer_id, query=query)
+        # Run the blocking gRPC call in a thread pool for true async parallelism
+        loop = asyncio.get_event_loop()
+        response = await loop.run_in_executor(
+            None, lambda: ga_service.search(customer_id=customer_id, query=query)
+        )
 
         campaigns = []
-        # Convert iterator to list to avoid potential issues
         rows = list(response)
 
         for row in rows:
@@ -557,7 +560,6 @@ class GoogleAdsTool:
                 all_campaigns.extend(campaigns)
                 accounts_queried.append(client_id)
                 logger.info("Got campaigns from client", client_id=client_id, count=len(campaigns))
-                logger.warning("Unexpected error getting campaigns", client_id=client_id, error=str(e))
 
         # Sort by impressions
         all_campaigns.sort(key=lambda x: x.get("impressions", 0), reverse=True)
