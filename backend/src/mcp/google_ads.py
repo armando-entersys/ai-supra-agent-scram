@@ -80,10 +80,6 @@ class GoogleAdsTool:
                             - SELECT campaign.name, campaign.status, metrics.impressions, metrics.clicks, metrics.cost_micros FROM campaign WHERE segments.date DURING LAST_30_DAYS
                             - SELECT ad_group.name, ad_group.status, metrics.conversions FROM ad_group WHERE campaign.id = '123456'
                             - SELECT ad_group_ad.ad.id, ad_group_ad.ad.name, metrics.impressions FROM ad_group_ad"""
-                        },
-                        "customer_id": {
-                            "type": "string",
-                            "description": "Google Ads customer ID (optional, uses default if not provided)"
                         }
                     },
                     "required": ["query"]
@@ -91,15 +87,10 @@ class GoogleAdsTool:
             },
             {
                 "name": "google_ads_list_campaigns",
-                "description": "List active campaigns with their budget and key metrics for the last 30 days. Only returns ENABLED campaigns.",
+                "description": "List active campaigns with their budget and key metrics for the last 30 days. Only returns ENABLED campaigns. No parameters needed.",
                 "parameters": {
                     "type": "object",
-                    "properties": {
-                        "customer_id": {
-                            "type": "string",
-                            "description": "Google Ads customer ID (optional)"
-                        }
-                    },
+                    "properties": {},
                     "required": []
                 }
             },
@@ -117,10 +108,6 @@ class GoogleAdsTool:
                             "type": "string",
                             "enum": ["LAST_7_DAYS", "LAST_14_DAYS", "LAST_30_DAYS", "THIS_MONTH", "LAST_MONTH"],
                             "description": "Date range for metrics (default: LAST_30_DAYS)"
-                        },
-                        "customer_id": {
-                            "type": "string",
-                            "description": "Google Ads customer ID (optional)"
                         }
                     },
                     "required": ["campaign_id"]
@@ -135,22 +122,9 @@ class GoogleAdsTool:
                         "campaign_id": {
                             "type": "string",
                             "description": "Campaign ID to list ad groups for"
-                        },
-                        "customer_id": {
-                            "type": "string",
-                            "description": "Google Ads customer ID (optional)"
                         }
                     },
                     "required": ["campaign_id"]
-                }
-            },
-            {
-                "name": "google_ads_list_accessible_customers",
-                "description": "List all Google Ads customer accounts accessible with the current credentials.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {},
-                    "required": []
                 }
             },
             {
@@ -171,10 +145,6 @@ class GoogleAdsTool:
                             "type": "string",
                             "enum": ["LAST_7_DAYS", "LAST_14_DAYS", "LAST_30_DAYS", "THIS_MONTH", "LAST_MONTH"],
                             "description": "Date range for metrics (default: LAST_30_DAYS)"
-                        },
-                        "customer_id": {
-                            "type": "string",
-                            "description": "Google Ads customer ID (optional)"
                         }
                     },
                     "required": []
@@ -182,7 +152,7 @@ class GoogleAdsTool:
             },
             {
                 "name": "google_ads_search_terms",
-                "description": "Get search terms report - the actual search queries people typed that triggered your ads. Use this to discover what users are searching for.",
+                "description": "Get search terms report - the actual search queries people typed that triggered your ads.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -194,10 +164,6 @@ class GoogleAdsTool:
                             "type": "string",
                             "enum": ["LAST_7_DAYS", "LAST_14_DAYS", "LAST_30_DAYS", "THIS_MONTH", "LAST_MONTH"],
                             "description": "Date range for metrics (default: LAST_30_DAYS)"
-                        },
-                        "customer_id": {
-                            "type": "string",
-                            "description": "Google Ads customer ID (optional)"
                         }
                     },
                     "required": ["campaign_id"]
@@ -205,21 +171,16 @@ class GoogleAdsTool:
             },
             {
                 "name": "google_ads_list_conversion_actions",
-                "description": "List all conversion actions configured in Google Ads. Use this to find the conversion action ID needed for offline conversion uploads.",
+                "description": "List all conversion actions configured in Google Ads.",
                 "parameters": {
                     "type": "object",
-                    "properties": {
-                        "customer_id": {
-                            "type": "string",
-                            "description": "Google Ads customer ID (optional)"
-                        }
-                    },
+                    "properties": {},
                     "required": []
                 }
             },
             {
                 "name": "google_ads_device_performance",
-                "description": "Get performance breakdown by device type (mobile, desktop, tablet). Critical for identifying device-specific issues.",
+                "description": "Get performance breakdown by device type (mobile, desktop, tablet).",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -231,10 +192,6 @@ class GoogleAdsTool:
                             "type": "string",
                             "enum": ["LAST_7_DAYS", "LAST_14_DAYS", "LAST_30_DAYS", "THIS_MONTH", "LAST_MONTH"],
                             "description": "Date range for metrics (default: LAST_30_DAYS)"
-                        },
-                        "customer_id": {
-                            "type": "string",
-                            "description": "Google Ads customer ID (optional)"
                         }
                     },
                     "required": []
