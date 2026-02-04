@@ -6,6 +6,7 @@ using the Google Ads API via GAQL (Google Ads Query Language).
 
 import asyncio
 import json
+import time
 import structlog
 from typing import Any
 from google.ads.googleads.client import GoogleAdsClient
@@ -22,6 +23,10 @@ settings = get_settings()
 class GoogleAdsTool:
     """MCP Tool for Google Ads API operations."""
 
+    # Simple in-memory cache: {cache_key: (timestamp, result)}
+    _cache: dict[str, tuple[float, Any]] = {}
+    _CACHE_TTL = 300  # 5 minutes
+
     def __init__(self):
         """Initialize the Google Ads client."""
         self._client = None
@@ -30,6 +35,20 @@ class GoogleAdsTool:
         self._client_accounts = settings.ads_client_account_list or []
         if self._client_accounts:
             logger.info("Using configured client accounts", accounts=self._client_accounts)
+
+    def _cache_get(self, key: str) -> Any | None:
+        """Get value from cache if not expired."""
+        if key in self._cache:
+            ts, result = self._cache[key]
+            if time.time() - ts < self._CACHE_TTL:
+                logger.info("Cache hit", key=key)
+                return result
+            del self._cache[key]
+        return None
+
+    def _cache_set(self, key: str, result: Any) -> None:
+        """Store value in cache."""
+        self._cache[key] = (time.time(), result)
 
     @property
     def client(self) -> GoogleAdsClient:
@@ -424,6 +443,12 @@ class GoogleAdsTool:
         # Always filter to ENABLED campaigns only - no need for inactive ones
         status_filter = "ENABLED"
 
+        # Check cache first (5 min TTL)
+        cache_key = f"campaigns_{status_filter}"
+        cached = self._cache_get(cache_key)
+        if cached is not None:
+            return cached
+
         logger.info("Listing campaigns", status_filter=status_filter)
 
         try:
@@ -449,12 +474,14 @@ class GoogleAdsTool:
                     customer_id, status_filter, ga_service
                 )
                 logger.info("Direct query successful", campaign_count=len(campaigns))
-                return {
+                result = {
                     "success": True,
                     "customer_id": customer_id,
                     "campaign_count": len(campaigns),
                     "campaigns": campaigns
                 }
+                self._cache_set(cache_key, result)
+                return result
             except GoogleAdsException as ex:
                 # Check if this is because it's a manager account
                 error_messages = []
@@ -521,7 +548,7 @@ class GoogleAdsTool:
         # Sort by impressions
         all_campaigns.sort(key=lambda x: x.get("impressions", 0), reverse=True)
 
-        return {
+        result = {
             "success": True,
             "mcc_customer_id": customer_id,
             "accounts_queried": accounts_queried,
@@ -529,6 +556,9 @@ class GoogleAdsTool:
             "campaigns": all_campaigns[:50],  # Limit response size
             "errors": errors if errors else None
         }
+        # Cache successful result
+        self._cache_set(cache_key, result)
+        return result
 
     async def _campaign_performance(self, parameters: dict[str, Any]) -> dict[str, Any]:
         """Get campaign performance metrics."""

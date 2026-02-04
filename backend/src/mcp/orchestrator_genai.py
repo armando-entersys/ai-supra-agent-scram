@@ -124,10 +124,11 @@ HERRAMIENTAS - Flujo recomendado:
 3. Compara siempre: Ads reporta ~1 conversión pero CRM tiene 25+ leads de Ads = TRACKING ROTO
 
 REGLAS DE HERRAMIENTAS:
+- VELOCIDAD: Llama TODAS las herramientas que necesites EN UN SOLO TURNO (en paralelo). No esperes resultado de una para llamar otra.
+- Ejemplo: Para "estoy ganando dinero?" llama google_ads_list_campaigns + leads_get_summary + leads_pipeline_value JUNTAS en el mismo turno.
 - NO uses `google_ads_search` con GAQL (falla)
 - Ejecuta herramientas SIN pedir permiso
 - NUNCA pidas IDs al usuario
-- Encadena hasta 10 herramientas si es necesario
 - Para análisis cruzado usa `bq_auto_analyze`
 
 BENCHMARKS: CTR >2% bueno, CPC <$2 bueno, Conv Rate >3% bueno
