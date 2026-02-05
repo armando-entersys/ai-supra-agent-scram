@@ -560,16 +560,51 @@ class GoogleAdsTool:
         self._cache_set(cache_key, result)
         return result
 
+    def _resolve_customer_ids(self) -> list[str]:
+        """Get the list of client account IDs to query against."""
+        if self._client_accounts:
+            return self._client_accounts
+        customer_id = self._customer_id
+        return [customer_id.replace("-", "")] if customer_id else []
+
+    async def _query_client_accounts(self, query: str, ga_service: Any) -> list:
+        """Run a GAQL query across all client accounts in parallel, returning all rows."""
+        customer_ids = self._resolve_customer_ids()
+        if not customer_ids:
+            return []
+
+        loop = asyncio.get_event_loop()
+        all_rows = []
+
+        async def _query_one(cid: str):
+            try:
+                resp = await loop.run_in_executor(
+                    None, lambda: ga_service.search(customer_id=cid, query=query)
+                )
+                return cid, list(resp)
+            except Exception:
+                return cid, []
+
+        tasks = [_query_one(cid) for cid in customer_ids]
+        results = await asyncio.gather(*tasks)
+        for cid, rows in results:
+            for row in rows:
+                all_rows.append((cid, row))
+        return all_rows
+
     async def _campaign_performance(self, parameters: dict[str, Any]) -> dict[str, Any]:
         """Get campaign performance metrics."""
         campaign_id = parameters.get("campaign_id")
-        customer_id = self._get_customer_id(parameters)
         date_range = parameters.get("date_range", "LAST_30_DAYS")
 
-        if not customer_id:
-            return {"error": "Customer ID is required"}
         if not campaign_id:
             return {"error": "Campaign ID is required"}
+
+        # Check cache
+        cache_key = f"perf_{campaign_id}_{date_range}"
+        cached = self._cache_get(cache_key)
+        if cached is not None:
+            return cached
 
         query = f"""
             SELECT
@@ -594,7 +629,7 @@ class GoogleAdsTool:
         logger.info("Getting campaign performance", campaign_id=campaign_id)
 
         ga_service = self.client.get_service("GoogleAdsService")
-        response = ga_service.search(customer_id=customer_id, query=query)
+        rows = await self._query_client_accounts(query, ga_service)
 
         daily_data = []
         totals = {
@@ -608,7 +643,7 @@ class GoogleAdsTool:
         campaign_name = ""
         campaign_status = ""
 
-        for row in response:
+        for _cid, row in rows:
             campaign_name = row.campaign.name
             campaign_status = row.campaign.status.name
 
@@ -627,7 +662,7 @@ class GoogleAdsTool:
             totals["conversions"] += row.metrics.conversions
             totals["conversions_value"] += row.metrics.conversions_value
 
-        return {
+        result = {
             "success": True,
             "campaign_id": campaign_id,
             "campaign_name": campaign_name,
@@ -642,16 +677,15 @@ class GoogleAdsTool:
                 "ctr": round((totals["clicks"] / totals["impressions"] * 100), 2) if totals["impressions"] > 0 else 0,
                 "cpc": round(totals["cost_micros"] / totals["clicks"] / 1_000_000, 2) if totals["clicks"] > 0 else 0,
             },
-            "daily_data": daily_data[:30]  # Last 30 days
+            "daily_data": daily_data[:30]
         }
+        self._cache_set(cache_key, result)
+        return result
 
     async def _list_ad_groups(self, parameters: dict[str, Any]) -> dict[str, Any]:
         """List ad groups for a campaign."""
         campaign_id = parameters.get("campaign_id")
-        customer_id = self._get_customer_id(parameters)
 
-        if not customer_id:
-            return {"error": "Customer ID is required"}
         if not campaign_id:
             return {"error": "Campaign ID is required"}
 
@@ -676,10 +710,10 @@ class GoogleAdsTool:
         logger.info("Listing ad groups", campaign_id=campaign_id)
 
         ga_service = self.client.get_service("GoogleAdsService")
-        response = ga_service.search(customer_id=customer_id, query=query)
+        rows = await self._query_client_accounts(query, ga_service)
 
         ad_groups = []
-        for row in response:
+        for _cid, row in rows:
             ad_groups.append({
                 "id": row.ad_group.id,
                 "name": row.ad_group.name,
@@ -726,11 +760,8 @@ class GoogleAdsTool:
         """Get keyword performance data."""
         campaign_id = parameters.get("campaign_id")
         ad_group_id = parameters.get("ad_group_id")
-        customer_id = self._get_customer_id(parameters)
         date_range = parameters.get("date_range", "LAST_30_DAYS")
 
-        if not customer_id:
-            return {"error": "Customer ID is required"}
         if not campaign_id and not ad_group_id:
             return {"error": "Either campaign_id or ad_group_id is required"}
 
@@ -763,10 +794,10 @@ class GoogleAdsTool:
         logger.info("Getting keyword performance", campaign_id=campaign_id, ad_group_id=ad_group_id)
 
         ga_service = self.client.get_service("GoogleAdsService")
-        response = ga_service.search(customer_id=customer_id, query=query)
+        rows = await self._query_client_accounts(query, ga_service)
 
         keywords = []
-        for row in response:
+        for _cid, row in rows:
             keywords.append({
                 "keyword": row.ad_group_criterion.keyword.text,
                 "match_type": row.ad_group_criterion.keyword.match_type.name,
@@ -792,11 +823,8 @@ class GoogleAdsTool:
     async def _search_terms(self, parameters: dict[str, Any]) -> dict[str, Any]:
         """Get search terms report - actual queries that triggered ads."""
         campaign_id = parameters.get("campaign_id")
-        customer_id = self._get_customer_id(parameters)
         date_range = parameters.get("date_range", "LAST_30_DAYS")
 
-        if not customer_id:
-            return {"error": "Customer ID is required"}
         if not campaign_id:
             return {"error": "Campaign ID is required"}
 
@@ -817,13 +845,13 @@ class GoogleAdsTool:
             LIMIT 100
         """
 
-        logger.info("Getting search terms", campaign_id=campaign_id, customer_id=customer_id)
+        logger.info("Getting search terms", campaign_id=campaign_id)
 
         ga_service = self.client.get_service("GoogleAdsService")
-        response = ga_service.search(customer_id=customer_id, query=query)
+        rows = await self._query_client_accounts(query, ga_service)
 
         search_terms = []
-        for row in response:
+        for _cid, row in rows:
             search_terms.append({
                 "search_term": row.search_term_view.search_term,
                 "campaign": row.campaign.name,
